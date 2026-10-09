@@ -127,6 +127,10 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.L1Loss()
 
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    best_val, best_epoch, best_state = float("inf"), None, None
+
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_losses = []
@@ -148,11 +152,17 @@ def main():
                 pred = y_ref + model(x)
                 val_losses.append(criterion(pred, target).item())
                 baseline_losses.append(criterion(y_ref, target).item())
+        val_l1 = float(np.mean(val_losses))
+        marker = ""
+        if val_l1 < best_val:
+            best_val, best_epoch = val_l1, epoch
+            best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            marker = "  (найкращий дотепер)"
         print(f"epoch {epoch}/{args.epochs}  train_L1={np.mean(train_losses):.4f}  "
-              f"val_L1={np.mean(val_losses):.4f}  baseline_yref_L1={np.mean(baseline_losses):.4f}")
+              f"val_L1={val_l1:.4f}  baseline_yref_L1={np.mean(baseline_losses):.4f}{marker}")
 
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\nНайкраща епоха за val_L1: {best_epoch} (val_L1={best_val:.4f}) - саме цей чекпоінт оцінюється й зберігається.")
+    model.load_state_dict(best_state)
     torch.save(model.state_dict(), out_dir / "model.pt")
 
     results = evaluate(model, val_loader, device)
@@ -177,7 +187,8 @@ def main():
         "",
         f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів). "
         f"Val ROI: {', '.join(args.val_roi)} ({len(val_ds)} патчів) - інша локація, без перетину з train.",
-        f"Епох: {args.epochs}, розмір зображення (даунсемпл): {args.img_size}x{args.img_size}.",
+        f"Епох: {args.epochs}, розмір зображення (даунсемпл): {args.img_size}x{args.img_size}. "
+        f"Найкраща епоха за val_L1: {best_epoch} (оцінюється саме цей чекпоінт, не останній).",
         "",
         f"- Модель (y_ref + Δθ):  {fmt(model_tab)}",
         f"- Базовий рівень (y_ref): {fmt(base_tab)}",
