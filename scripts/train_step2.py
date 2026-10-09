@@ -7,14 +7,13 @@
 структурний аналог least_cloudy_strict/linear_interp: обидва намагаються оцінити
 ціль з останнього доступного чистого спостереження, лише без навченої поправки.
 
-Важливо: дані - лише один ROI (ROIs1868/100, asiaWest, test split SEN12MS-CR-TS).
-Тренувальний і валідаційний патчі розділені БЛОКОМ індексів (не випадково), щоб
-хоч трохи зменшити (не усунути) просторову витікання між суміжними тайлами одного
-поля - але це прототип на малих даних, не фінальний дисертаційний результат.
+Валідація по ROI (а не по блоку патчів усередині одного ROI): train і val - це ПОВНІСТЮ
+РІЗНІ географічні локації (різні ROI), тож просторової кореляції між train і val немає
+(на відміну від блочного поділу патчів усередині одного ROI, який лишався ризиком раніше).
 
 Запуск:
-    python train_step2.py --root data/raw/s2_asiaWest_test --roi-dir ROIs1868 --roi 100 \
-        --epochs 5 --img-size 128 --out results/step2_prototype
+    python train_step2.py --root data/raw --train-roi s2_america_test/ROIs1158/106 \
+        --val-roi s2_america_test/ROIs1970/132 --epochs 5 --img-size 128 --out results/step2_v2
 """
 import argparse
 import json
@@ -37,10 +36,27 @@ def count_patches(root, roi_dir, roi):
     return len([f for f in d.iterdir() if f.suffix == ".tif"])
 
 
-def split_indices(n, val_frac, min_val=10):
-    n_val = max(min_val, int(round(n * val_frac)))
-    n_val = min(n_val, n - 1)
-    return list(range(0, n - n_val)), list(range(n - n_val, n))
+def resolve_roi_spec(root, spec):
+    """'s2_america_test/ROIs1158/106' -> (root/s2_america_test, 'ROIs1158', '106')."""
+    parts = spec.strip("/").split("/")
+    roi_dir, roi = parts[-2], parts[-1]
+    prefix = parts[:-2]
+    full_root = Path(root).joinpath(*prefix) if prefix else Path(root)
+    return full_root, roi_dir, roi
+
+
+def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed):
+    from torch.utils.data import ConcatDataset
+    parts = []
+    for spec in specs:
+        r, roi_dir, roi = resolve_roi_spec(root, spec)
+        n = count_patches(r, roi_dir, roi)
+        ds = SEN12MSCRTSPatchDataset(root=r, roi_dir=roi_dir, roi=roi, patch_indices=range(n),
+                                      img_size=img_size, target_mode=target_mode,
+                                      target_max_cloud=target_max_cloud, seed=seed)
+        print(f"  {spec}: {n} патчів")
+        parts.append(ds)
+    return ConcatDataset(parts) if len(parts) > 1 else parts[0]
 
 
 def evaluate(model, loader, device):
@@ -73,30 +89,37 @@ def summarize(results, key):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", required=True)
-    ap.add_argument("--roi-dir", required=True)
-    ap.add_argument("--roi", required=True)
-    ap.add_argument("--val-frac", type=float, default=0.2)
+    ap.add_argument("--root", required=True, help="коренева директорія (data/raw)")
+    ap.add_argument("--train-roi", action="append", required=True,
+                     help="'<підшлях>/<ROIs-dir>/<roi>', можна кілька разів для кількох локацій")
+    ap.add_argument("--val-roi", action="append", required=True,
+                     help="те саме для валідації - МАЄ бути іншим ROI, ніж --train-roi")
     ap.add_argument("--epochs", type=int, default=5)
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--img-size", type=int, default=128, help="просторовий даунсемпл для швидкості прототипу")
+    ap.add_argument("--target-mode", default="random_clean", choices=["argmin", "random_clean"])
+    ap.add_argument("--target-max-cloud", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_prototype")
     ap.add_argument("--n-boot", type=int, default=2000)
     args = ap.parse_args()
 
+    overlap = set(args.train_roi) & set(args.val_roi)
+    if overlap:
+        sys.exit(f"--train-roi і --val-roi перетинаються: {overlap} - це робить валідацію нечесною")
+
     torch.manual_seed(args.seed)
     device = torch.device("cpu")
 
-    n_patches = count_patches(args.root, args.roi_dir, args.roi)
-    train_idx, val_idx = split_indices(n_patches, args.val_frac)
-    print(f"Патчів у ROI {args.roi_dir}/{args.roi}: {n_patches} "
-          f"(train={len(train_idx)}, val={len(val_idx)}, блочний поділ за індексом)")
+    print("Train ROI:")
+    train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode,
+                              args.target_max_cloud, args.seed)
+    print("Val ROI (інша географічна локація, без перетину з train):")
+    val_ds = build_dataset(args.root, args.val_roi, args.img_size, args.target_mode,
+                            args.target_max_cloud, args.seed)
+    print(f"Разом: train={len(train_ds)}, val={len(val_ds)}")
 
-    common = dict(root=args.root, roi_dir=args.roi_dir, roi=args.roi, img_size=args.img_size, seed=args.seed)
-    train_ds = SEN12MSCRTSPatchDataset(patch_indices=train_idx, **common)
-    val_ds = SEN12MSCRTSPatchDataset(patch_indices=val_idx, **common)
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
 
@@ -152,8 +175,8 @@ def main():
     report = [
         "# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref",
         "",
-        f"ROI: {args.roi_dir}/{args.roi}. Патчів: train={len(train_idx)}, val={len(val_idx)} "
-        f"(блочний поділ за індексом - лише один ROI, можлива просторова кореляція між блоками).",
+        f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів). "
+        f"Val ROI: {', '.join(args.val_roi)} ({len(val_ds)} патчів) - інша локація, без перетину з train.",
         f"Епох: {args.epochs}, розмір зображення (даунсемпл): {args.img_size}x{args.img_size}.",
         "",
         f"- Модель (y_ref + Δθ):  {fmt(model_tab)}",
@@ -171,9 +194,9 @@ def main():
         + ("ВИКОНАНО" if criterion_met else "НЕ виконано") + " на цьому прототипі."
     )
     report.append(
-        "\nЦе прототип на одному ROI (300 патчів, 1 локація) з короткою кількістю епох - "
-        "недостатньо для дисертаційного висновку. Потрібно: більше ROI/регіонів, "
-        "повна роздільність, >=5 запусків з різними seed, статистична поправка на множинні порівняння."
+        f"\nЦе прототип на {len(args.train_roi)} train- і {len(args.val_roi)} val-ROI - "
+        "недостатньо для дисертаційного висновку (потрібно більше регіонів, повна роздільність, "
+        ">=5 запусків з різними seed, статистична поправка на множинні порівняння)."
     )
 
     (out_dir / "report.md").write_text("\n".join(report), encoding="utf-8")
