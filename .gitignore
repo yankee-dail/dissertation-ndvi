@@ -1,7 +1,10 @@
 .venv/
+.venv312/
 __pycache__/
 *.pyc
 data/
 results/
 *.npz
 *.tif
+*.pt
+.DS_Store
