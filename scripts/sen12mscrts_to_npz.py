@@ -110,12 +110,32 @@ def list_patch_series(root: Path, roi_dir: str, roi: str, modality: str):
     return series
 
 
-def export_roi(root, roi_dir, roi, out_dir, split_name, cloud_fn, max_patches, bands):
+def pick_target_idx(frac, rng, max_cloud, mode):
+    """Обирає індекс кадру-цілі.
+
+    mode='argmin': ціль = найменш хмарний кадр (як в офіційному sample_type='cloudy_cloudfree').
+        Це робить 'least_cloudy_raw' тавтологічно ідеальним - ціль за визначенням є
+        найкращим кандидатом. Залишено лише для відтворення цього відомого ефекту.
+    mode='random_clean': ціль - випадковий кадр із хмарністю <= max_cloud, незалежний від
+        того, чи він глобально найчистіший. Це реалістичніший сценарій ("потрібна дата",
+        а не "найчистіша дата") і дає змістовний, не завжди 100%, показник ризику витоку.
+    """
+    if mode == "argmin":
+        return int(np.argmin(frac))
+    candidates = np.where(frac <= max_cloud)[0]
+    if len(candidates) == 0:
+        return int(np.argmin(frac))
+    return int(rng.choice(candidates))
+
+
+def export_roi(root, roi_dir, roi, out_dir, split_name, cloud_fn, max_patches, bands,
+                target_mode="random_clean", target_max_cloud=0.3, seed=0):
     s2_series = list_patch_series(root, roi_dir, roi, "S2")
     n_patches = len(s2_series[0])
     if max_patches:
         n_patches = min(n_patches, max_patches)
 
+    rng = np.random.default_rng(seed)
     written = 0
     for pdx in range(n_patches):
         paths = [s2_series[tdx][pdx] for tdx in range(N_TIME_POINTS)]
@@ -127,7 +147,7 @@ def export_roi(root, roi_dir, roi, out_dir, split_name, cloud_fn, max_patches, b
         t_days = np.array([(parse_date(p.name) - S1_LAUNCH).days for p in paths], dtype=np.int64)
 
         frac = cloud.reshape(cloud.shape[0], -1).mean(axis=1)
-        target_idx = int(np.argmin(frac))
+        target_idx = pick_target_idx(frac, rng, target_max_cloud, target_mode)
         target = s2[target_idx].copy()
 
         # нормалізація відбиття до [0,1], як у офіційному process_MS(method='default')
@@ -158,6 +178,12 @@ def main():
     ap.add_argument("--max-patches-per-roi", type=int, default=None, help="обмеження для швидкого тесту")
     ap.add_argument("--cloud-detector", default="simple", choices=["simple", "s2cloudless"])
     ap.add_argument("--bands", default=None, help="кома-список індексів каналів для збереження, напр. 1,2,3,7")
+    ap.add_argument("--target-mode", default="random_clean", choices=["argmin", "random_clean"],
+                     help="argmin = ціль завжди найчистіша (тавтологічно ідеальна для least_cloudy_raw); "
+                          "random_clean = ціль - випадковий достатньо чистий кадр, незалежний від глобального мінімуму")
+    ap.add_argument("--target-max-cloud", type=float, default=0.3,
+                     help="максимальна хмарність кадру, який можна обрати ціллю в режимі random_clean")
+    ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     root = Path(args.root)
@@ -172,7 +198,8 @@ def main():
         if not roi_path.is_dir():
             print(f"[warn] пропущено відсутній ROI {roi_dir}/{roi}", file=sys.stderr)
             continue
-        n = export_roi(root, roi_dir, roi, out_dir, args.split, cloud_fn, args.max_patches_per_roi, bands)
+        n = export_roi(root, roi_dir, roi, out_dir, args.split, cloud_fn, args.max_patches_per_roi, bands,
+                        target_mode=args.target_mode, target_max_cloud=args.target_max_cloud, seed=args.seed)
         print(f"{roi_dir}/{roi}: експортовано {n} патчів")
         total += n
 
