@@ -9,10 +9,16 @@ results/
 *.pt
 .DS_Store
 
-# фінальні прогони зберігаються для відстежуваності (виняток із results/ і *.pt вище)
+# фінальні й порівняльні прогони зберігаються для відстежуваності (виняток із results/ і *.pt вище)
 !results/step2_final/
 !results/step2_final/**
+!results/step2_1roi_v2/
+!results/step2_1roi_v2/**
+!results/step2_3roi_v2/
+!results/step2_3roi_v2/**
 !results/uncertainty_final/
 !results/uncertainty_final/**
+!results/uncertainty_1roi_v2/
+!results/uncertainty_1roi_v2/**
 !results/figures/
 !results/figures/**

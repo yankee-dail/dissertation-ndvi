@@ -88,13 +88,12 @@ def fig1_training_curves():
 
 
 def fig2_scaling():
-    # 1/3/5 - розвідувальні прогони зі СТАРОЮ методологією (чекпоінт обирався й
-    # звітувався на тому самому ROI). 4* - фінальний прогін із незалежними
-    # train/val/test ROI і маскуванням хмарних пікселів цілі (results/step2_final).
-    labels = ["1 ROI\n(розвід.)", "3 ROI\n(розвід.)", "4 ROI*\n(val≠test,\nмаск.)"]
-    d_rmse = [0.0024, -0.0029, -0.0059]
-    d_sam = [-0.09, -0.50, -1.03]
-    hatches = ["//", "//", None]
+    # Усі три точки - ОДНАКОВА методологія: train ROI варіюється, val=asiaEast/119
+    # (вибір епохи) і test=america/132 (звіт) фіксовані для всіх трьох, RMSE/MAE/SAM
+    # маскують хмарні пікселі цілі. results/step2_{1,3}roi_v2 + results/step2_final (4 ROI).
+    labels = ["1 ROI", "3 ROI", "4 ROI"]
+    d_rmse = [0.0028, -0.0032, -0.0059]
+    d_sam = [-0.08, -0.51, -1.03]
 
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.2))
     for ax, deltas, ylabel, title in [
@@ -102,29 +101,26 @@ def fig2_scaling():
         (axes[1], d_sam, "Δ SAM, ° (модель − базовий)", "SAM: <0 означає краще за базовий"),
     ]:
         colors = [PALETTE["critical"] if v > 0 else PALETTE["good"] for v in deltas]
-        bars = ax.bar(labels, deltas, color=colors, width=0.55)
-        for b, h in zip(bars, hatches):
-            if h:
-                b.set_hatch(h)
-                b.set_alpha(0.6)
+        ax.bar(labels, deltas, color=colors, width=0.5)
         ax.axhline(0, color=PALETTE["ink"], lw=1)
+        ax.set_xlabel("Кількість тренувальних ROI (val/test фіксовані, однакові для всіх)")
         ax.set_ylabel(ylabel)
         ax.set_title(title, fontsize=10)
         _strip_spines(ax)
 
-    fig.suptitle("Ефект масштабування тренувальних ROI (заштриховані = розвідувальна методологія,\n"
-                  "суцільний = незалежні val/test + маскування хмарних пікселів цілі)", fontsize=10)
+    fig.suptitle("Ефект масштабування тренувальних ROI (однакова методологія для всіх точок:\n"
+                  "val≠test, маскування хмарних пікселів цілі)", fontsize=10)
     fig.tight_layout()
     fig.savefig(OUT / "fig2_roi_scaling.png")
     plt.close(fig)
 
 
 def fig3_calibration():
-    # Обидві точки - з маскуванням хмарних пікселів цілі (апельсини-до-апельсинів):
-    # uncertainty_smoketest_v2 (1 train ROI) і uncertainty_final (4 train ROI).
+    # Обидві точки - ОДНАКОВИЙ calib ROI (asiaEast/139) і test ROI (america/132),
+    # лише train варіюється: results/uncertainty_1roi_v2 vs results/uncertainty_final.
     labels = ["1 train ROI", "4 train ROI"]
     coverage = [88.7, 90.8]
-    width = [0.2737, 0.1994]
+    width = [0.2271, 0.1994]
 
     fig, axes = plt.subplots(1, 2, figsize=(9, 4))
     axes[0].bar(labels, coverage, color=PALETTE["blue"], width=0.5)
