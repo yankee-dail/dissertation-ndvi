@@ -134,7 +134,12 @@ class SEN12MSCRTSPatchDataset(Dataset):
                            dtype=np.float32)
         x = np.concatenate([y_ref, x_near, cloud_near, day_gap], axis=0)
 
-        return torch.from_numpy(x), torch.from_numpy(y_ref), torch.from_numpy(target)
+        # Хмарність ЦІЛІ (а не входу): target_max_cloud - поріг на СЕРЕДНЮ хмарність усього
+        # патча, тож окремі пікселі цілі можуть лишатись хмарними. Повертаємо карту, щоб
+        # метрики могли виключити ці пікселі замість порівнювати прогноз із хмарою.
+        target_cloud = self._maybe_resize(simple_cloud_prob(target_raw)[None].astype(np.float32))[0]
+
+        return torch.from_numpy(x), torch.from_numpy(y_ref), torch.from_numpy(target), torch.from_numpy(target_cloud)
 
     @staticmethod
     def _parse_day(filename):

@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from sen12mscrts_dataset import n_bands, n_input_channels
 from model import ResidualUNetUncertainty
 from train_step2 import build_dataset
-from eval_protocol import rmse, mae, ssim_score, sam_degrees
+from eval_protocol import all_metrics, CLEAN_PIXEL_THRESH
 
 
 def gaussian_nll(delta, log_sigma, y_ref, target):
@@ -53,49 +53,58 @@ def predict(model, x, y_ref):
     return mu, sigma
 
 
-def nonconformity_scores(model, loader, device):
-    """r_i = |target - mu| / sigma, на кожен піксель/канал, по всьому набору."""
+def nonconformity_scores(model, loader, device, clean_thresh=CLEAN_PIXEL_THRESH):
+    """r_i = |target - mu| / sigma, лише по пікселях ЦІЛІ з cloud < clean_thresh.
+
+    Калібрування за хмарними пікселями цілі було б калібруванням проти хмари, а не
+    проти поверхні - спотворило б q у довільний бік."""
     model.eval()
     scores = []
     with torch.no_grad():
-        for x, y_ref, target in loader:
+        for x, y_ref, target, target_cloud in loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             mu, sigma = predict(model, x, y_ref)
             r = (target - mu).abs() / sigma.clamp(min=1e-4)
-            scores.append(r.flatten().cpu().numpy())
+            mask = (target_cloud < clean_thresh).unsqueeze(1).expand_as(r)  # той самий маск на всі канали
+            scores.append(r[mask].cpu().numpy())
     return np.concatenate(scores)
 
 
-def evaluate_with_intervals(model, loader, device, q):
+def evaluate_with_intervals(model, loader, device, q, clean_thresh=CLEAN_PIXEL_THRESH):
     model.eval()
     per_sample = []
     coverage_flags = []
     widths = []
+    n_clear_total, n_px_total = 0, 0
     with torch.no_grad():
-        for x, y_ref, target in loader:
+        for x, y_ref, target, target_cloud in loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             mu, sigma = predict(model, x, y_ref)
             lo, hi = mu - q * sigma, mu + q * sigma
             covered = (target >= lo) & (target <= hi)
-            coverage_flags.append(covered.flatten().cpu().numpy())
-            widths.append((hi - lo).flatten().cpu().numpy())
+            px_mask = (target_cloud < clean_thresh).unsqueeze(1).expand_as(covered)
+            # Покриття рахується лише по чистих пікселях цілі - не можна перевірити,
+            # чи інтервал "накрив" значення, якого саме через хмару не видно насправді.
+            coverage_flags.append(covered[px_mask].cpu().numpy())
+            widths.append((hi - lo)[px_mask].cpu().numpy())
+            n_clear_total += int(px_mask.sum())
+            n_px_total += int(px_mask.numel())
             for b in range(x.shape[0]):
                 m, t, r = mu[b].cpu().numpy(), target[b].cpu().numpy(), y_ref[b].cpu().numpy()
+                mask = target_cloud[b].numpy() < clean_thresh
                 per_sample.append({
-                    "model_mu": {"rmse": rmse(m, t), "mae": mae(m, t), "ssim": ssim_score(m, t),
-                                 "sam_deg": sam_degrees(m, t)},
-                    "baseline_yref": {"rmse": rmse(r, t), "mae": mae(r, t), "ssim": ssim_score(r, t),
-                                       "sam_deg": sam_degrees(r, t)},
+                    "model_mu": all_metrics(m, t, mask=mask),
+                    "baseline_yref": all_metrics(r, t, mask=mask),
                     "mean_sigma": float(sigma[b].mean().cpu()),
                 })
     coverage = float(np.concatenate(coverage_flags).mean())
     mean_width = float(np.concatenate(widths).mean())
-    return per_sample, coverage, mean_width
+    return per_sample, coverage, mean_width, n_clear_total, n_px_total
 
 
 def summarize(results, key):
     rows = [r[key] for r in results]
-    return {m: (float(np.mean([row[m] for row in rows])), float(np.std([row[m] for row in rows])))
+    return {m: (float(np.nanmean([row[m] for row in rows])), float(np.nanstd([row[m] for row in rows])))
             for m in ["rmse", "mae", "ssim", "sam_deg"]}
 
 
@@ -145,7 +154,7 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_losses = []
-        for x, y_ref, target in train_loader:
+        for x, y_ref, target, _ in train_loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             delta, log_sigma = model(x)
             loss = gaussian_nll(delta, log_sigma, y_ref, target)
@@ -157,7 +166,7 @@ def main():
         model.eval()
         calib_losses = []
         with torch.no_grad():
-            for x, y_ref, target in calib_loader:
+            for x, y_ref, target, _ in calib_loader:
                 x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
                 delta, log_sigma = model(x)
                 calib_losses.append(gaussian_nll(delta, log_sigma, y_ref, target).item())
@@ -178,7 +187,7 @@ def main():
     q = float(np.quantile(scores, args.coverage))
     print(f"\nКонформний множник q (рівень {args.coverage:.0%}): {q:.3f} (з {len(scores)} піксель-каналів calib-набору)")
 
-    test_results, test_coverage, test_width = evaluate_with_intervals(model, test_loader, device, q)
+    test_results, test_coverage, test_width, n_clear, n_px = evaluate_with_intervals(model, test_loader, device, q)
     model_tab = summarize(test_results, "model_mu")
     base_tab = summarize(test_results, "baseline_yref")
 
@@ -197,6 +206,9 @@ def main():
         f"Номінальне покриття: {args.coverage:.0%}. Конформний множник q = {q:.3f}.",
         f"**Фактичне покриття на test ROI: {test_coverage:.1%}** (ціль: {args.coverage:.0%}). "
         f"Середня ширина інтервалу: {test_width:.4f} (у шкалі [0,1] відбиття).",
+        f"Покриття, ширина, RMSE/MAE/SAM рахувались лише по пікселях цілі з хмарністю < {CLEAN_PIXEL_THRESH} "
+        f"({n_clear}/{n_px} = {100*n_clear/max(n_px,1):.1f}% пікселів test-набору; SSIM - без маски). "
+        f"Калібрування (підбір q) також рахувалось лише по чистих пікселях calib-набору.",
         "",
         f"- μ-прогноз моделі: {fmt(model_tab)}",
         f"- Базовий рівень (y_ref): {fmt(base_tab)}",

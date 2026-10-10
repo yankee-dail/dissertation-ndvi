@@ -46,19 +46,42 @@ CLEAN_PIXEL_THRESH = 0.2  # піксель вважається "чистим" �
 
 # --------------------------- метрики ---------------------------
 
-def rmse(pred, target):
-    return float(np.sqrt(np.mean((pred - target) ** 2)))
+def _apply_mask(pred, target, mask):
+    """mask: (H, W) boolean, True = чистий (валідний) піксель цілі. None = без маскування.
+
+    Повертає сплощені (C, N) масиви лише з валідних пікселів. Якщо після маскування
+    валідних пікселів немає (увесь патч хмарний), повертає None, None - викликач має
+    пропустити такий семпл, а не рахувати метрику по хмарі.
+    """
+    if mask is None:
+        return pred.reshape(pred.shape[0], -1), target.reshape(target.shape[0], -1)
+    flat_mask = mask.reshape(-1)
+    if not np.any(flat_mask):
+        return None, None
+    p = pred.reshape(pred.shape[0], -1)[:, flat_mask]
+    t = target.reshape(target.shape[0], -1)[:, flat_mask]
+    return p, t
 
 
-def mae(pred, target):
-    return float(np.mean(np.abs(pred - target)))
+def rmse(pred, target, mask=None):
+    p, t = _apply_mask(pred, target, mask)
+    if p is None:
+        return float("nan")
+    return float(np.sqrt(np.mean((p - t) ** 2)))
 
 
-def sam_degrees(pred, target, eps=1e-8):
-    """Spectral Angle Mapper, у градусах, усереднений по пікселях. pred/target: (C, H, W)."""
-    c = pred.shape[0]
-    p = pred.reshape(c, -1)
-    t = target.reshape(c, -1)
+def mae(pred, target, mask=None):
+    p, t = _apply_mask(pred, target, mask)
+    if p is None:
+        return float("nan")
+    return float(np.mean(np.abs(p - t)))
+
+
+def sam_degrees(pred, target, mask=None, eps=1e-8):
+    """Spectral Angle Mapper, у градусах, усереднений по (валідних) пікселях. pred/target: (C, H, W)."""
+    p, t = _apply_mask(pred, target, mask)
+    if p is None:
+        return float("nan")
     dot = np.sum(p * t, axis=0)
     norm_p = np.linalg.norm(p, axis=0)
     norm_t = np.linalg.norm(t, axis=0)
@@ -72,7 +95,13 @@ def sam_degrees(pred, target, eps=1e-8):
 
 
 def ssim_score(pred, target):
-    """Усереднений по каналах SSIM. pred/target: (C, H, W), значення очікуються в [0,1]."""
+    """Усереднений по каналах SSIM. pred/target: (C, H, W), значення очікуються в [0,1].
+
+    НЕ маскується: SSIM - віконна (не потрапіксельна) метрика, коректне маскування
+    вимагало б вирізання довільної форми з ковзного вікна, що не підтримується
+    бібліотекою напряму. Тому SSIM рахується по всьому зображенню, включно з
+    хмарними пікселями цілі, якщо вони є, - це свідоме обмеження, не недогляд.
+    """
     if _ssim is None:
         return float("nan")
     scores = []
@@ -85,12 +114,12 @@ def ssim_score(pred, target):
     return float(np.mean(scores))
 
 
-def all_metrics(pred, target):
+def all_metrics(pred, target, mask=None):
     return {
-        "rmse": rmse(pred, target),
-        "mae": mae(pred, target),
-        "ssim": ssim_score(pred, target),
-        "sam_deg": sam_degrees(pred, target),
+        "rmse": rmse(pred, target, mask),
+        "mae": mae(pred, target, mask),
+        "ssim": ssim_score(pred, target),  # без маски, див. docstring ssim_score
+        "sam_deg": sam_degrees(pred, target, mask),
     }
 
 
@@ -182,11 +211,15 @@ def process_sample(npz_path, clean_thresh=CLEAN_PIXEL_THRESH, eps_cloud=EPS_CLOU
     t_days_rel = t_days - t_target  # інтерполяція оцінює значення у відносному дні цілі (0)
     pred_interp = linear_interp(s2, cloud, t_days_rel, exclude_idx=exclude, clean_thresh=clean_thresh)
 
+    # Хмарні пікселі самої цілі не маскуються при її виборі (поріг - середня хмарність
+    # патча), тож виключаємо їх тут, щоб не порівнювати прогноз із залишковою хмарою.
+    target_clear_mask = cloud[target_idx] < clean_thresh if target_idx >= 0 else None
+
     out = {"sample": Path(npz_path).stem, "risk_of_leak": risk_of_leak}
-    out["least_cloudy_raw"] = all_metrics(pred_raw, target)
+    out["least_cloudy_raw"] = all_metrics(pred_raw, target, mask=target_clear_mask)
     if pred_strict is not None:
-        out["least_cloudy_strict"] = all_metrics(pred_strict, target)
-    out["linear_interp"] = all_metrics(pred_interp, target)
+        out["least_cloudy_strict"] = all_metrics(pred_strict, target, mask=target_clear_mask)
+    out["linear_interp"] = all_metrics(pred_interp, target, mask=target_clear_mask)
     return out
 
 
@@ -197,9 +230,14 @@ METRICS = ["rmse", "mae", "ssim", "sam_deg"]
 
 
 def bootstrap_diff_ci(values_a, values_b, n_boot=2000, seed=0):
-    """CI для різниці mean(a) - mean(b) парним бутстрепом по семплах. a, b - однакової довжини."""
+    """CI для різниці mean(a) - mean(b) парним бутстрепом по семплах. a, b - однакової довжини.
+
+    Пари, де a або b - NaN (ціль без жодного чистого пікселя після маскування хмар),
+    виключаються з обох масивів разом, щоб бутстреп не давав NaN."""
     rng = np.random.default_rng(seed)
     a, b = np.asarray(values_a), np.asarray(values_b)
+    valid = ~(np.isnan(a) | np.isnan(b))
+    a, b = a[valid], b[valid]
     n = len(a)
     diffs = np.empty(n_boot)
     for i in range(n_boot):
@@ -210,16 +248,19 @@ def bootstrap_diff_ci(values_a, values_b, n_boot=2000, seed=0):
 
 
 def summarize(results, methods=METHODS):
+    """np.nanmean/nanstd - семпли з ціллю без жодного чистого пікселя дають NaN (див.
+    _apply_mask) і виключаються з агрегату, а не псують його."""
     table = {}
     for m in methods:
         rows = [r[m] for r in results if m in r]
         if not rows:
             continue
         table[m] = {
-            metric: (float(np.mean([row[metric] for row in rows])), float(np.std([row[metric] for row in rows])))
+            metric: (float(np.nanmean([row[metric] for row in rows])), float(np.nanstd([row[metric] for row in rows])))
             for metric in METRICS
         }
         table[m]["n"] = len(rows)
+        table[m]["n_valid"] = int(np.sum(~np.isnan([row["rmse"] for row in rows])))
     return table
 
 
@@ -229,8 +270,9 @@ def render_table_md(table, title):
         if m not in table:
             continue
         t = table[m]
+        n_disp = f"{t['n']}" if t.get("n_valid", t["n"]) == t["n"] else f"{t['n']} ({t['n_valid']} з чистими пікс.)"
         lines.append(
-            f"| {m} | {t['n']} | {t['rmse'][0]:.4f} ± {t['rmse'][1]:.4f} "
+            f"| {m} | {n_disp} | {t['rmse'][0]:.4f} ± {t['rmse'][1]:.4f} "
             f"| {t['mae'][0]:.4f} ± {t['mae'][1]:.4f} "
             f"| {t['ssim'][0]:.4f} ± {t['ssim'][1]:.4f} "
             f"| {t['sam_deg'][0]:.2f} ± {t['sam_deg'][1]:.2f} |"

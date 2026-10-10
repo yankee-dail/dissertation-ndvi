@@ -7,13 +7,23 @@
 структурний аналог least_cloudy_strict/linear_interp: обидва намагаються оцінити
 ціль з останнього доступного чистого спостереження, лише без навченої поправки.
 
-Валідація по ROI (а не по блоку патчів усередині одного ROI): train і val - це ПОВНІСТЮ
-РІЗНІ географічні локації (різні ROI), тож просторової кореляції між train і val немає
-(на відміну від блочного поділу патчів усередині одного ROI, який лишався ризиком раніше).
+Три незалежні групи ROI (train/val/test), усі - різні географічні локації:
+    --train-roi - на чому вчимо
+    --val-roi   - лише для вибору найкращої епохи (early stopping)
+    --test-roi  - лише для фінального звіту; НЕ бачиться моделлю й не впливає на вибір епохи
+
+Раніше val і test були тим самим ROI (вибір чекпоінту й фінальне число рахувались на
+одному наборі) - це давало оптимістичний зсув. Тепер вони розділені.
+
+Хмарні пікселі ЦІЛІ маскуються в RMSE/MAE/SAM (target_cloud < 0.2): target_max_cloud
+- це поріг на СЕРЕДНЮ хмарність патча, тож окремі пікселі цілі можуть лишатись
+хмарними; порівнювати прогноз із хмарою замість поверхні немає сенсу. SSIM
+НЕ маскується (віконна метрика, див. eval_protocol.ssim_score).
 
 Запуск:
     python train_step2.py --root data/raw --train-roi s2_america_test/ROIs1158/106 \
-        --val-roi s2_america_test/ROIs1970/132 --epochs 5 --img-size 128 --out results/step2_v2
+        --val-roi s2_asiaEast_test/ROIs1868/119 --test-roi s2_america_test/ROIs1970/132 \
+        --epochs 10 --img-size 128 --out results/step2_v3
 """
 import argparse
 import json
@@ -28,7 +38,7 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent))
 from sen12mscrts_dataset import SEN12MSCRTSPatchDataset, n_bands, n_input_channels
 from model import ResidualUNet
-from eval_protocol import rmse, mae, ssim_score, sam_degrees, bootstrap_diff_ci
+from eval_protocol import all_metrics, bootstrap_diff_ci, CLEAN_PIXEL_THRESH
 
 
 def count_patches(root, roi_dir, roi):
@@ -59,12 +69,15 @@ def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed):
     return ConcatDataset(parts) if len(parts) > 1 else parts[0]
 
 
-def evaluate(model, loader, device):
-    """Повертає список словників per-sample метрик для моделі й для базового рівня y_ref."""
+def evaluate(model, loader, device, clean_thresh=CLEAN_PIXEL_THRESH):
+    """Повертає список словників per-sample метрик для моделі й для базового рівня y_ref.
+
+    RMSE/MAE/SAM рахуються лише по пікселях цілі з cloud < clean_thresh (SSIM - без
+    маски, див. eval_protocol.ssim_score)."""
     model.eval()
     results = []
     with torch.no_grad():
-        for x, y_ref, target in loader:
+        for x, y_ref, target, target_cloud in loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             delta = model(x)
             pred = (y_ref + delta).clamp(0, 1)
@@ -72,18 +85,18 @@ def evaluate(model, loader, device):
                 p = pred[b].cpu().numpy()
                 r = y_ref[b].cpu().numpy()
                 t = target[b].cpu().numpy()
+                mask = target_cloud[b].numpy() < clean_thresh
                 results.append({
-                    "model": {"rmse": rmse(p, t), "mae": mae(p, t), "ssim": ssim_score(p, t),
-                              "sam_deg": sam_degrees(p, t)},
-                    "baseline_yref": {"rmse": rmse(r, t), "mae": mae(r, t), "ssim": ssim_score(r, t),
-                                       "sam_deg": sam_degrees(r, t)},
+                    "model": all_metrics(p, t, mask=mask),
+                    "baseline_yref": all_metrics(r, t, mask=mask),
+                    "n_clear_px": int(mask.sum()), "n_px": int(mask.size),
                 })
     return results
 
 
 def summarize(results, key):
     rows = [r[key] for r in results]
-    return {m: (float(np.mean([row[m] for row in rows])), float(np.std([row[m] for row in rows])))
+    return {m: (float(np.nanmean([row[m] for row in rows])), float(np.nanstd([row[m] for row in rows])))
             for m in ["rmse", "mae", "ssim", "sam_deg"]}
 
 
@@ -93,7 +106,9 @@ def main():
     ap.add_argument("--train-roi", action="append", required=True,
                      help="'<підшлях>/<ROIs-dir>/<roi>', можна кілька разів для кількох локацій")
     ap.add_argument("--val-roi", action="append", required=True,
-                     help="те саме для валідації - МАЄ бути іншим ROI, ніж --train-roi")
+                     help="лише для вибору найкращої епохи - МАЄ бути іншим ROI, ніж --train-roi/--test-roi")
+    ap.add_argument("--test-roi", action="append", required=True,
+                     help="лише для фінального звіту - МАЄ бути іншим ROI, ніж --train-roi/--val-roi")
     ap.add_argument("--epochs", type=int, default=5)
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -105,9 +120,9 @@ def main():
     ap.add_argument("--n-boot", type=int, default=2000)
     args = ap.parse_args()
 
-    overlap = set(args.train_roi) & set(args.val_roi)
-    if overlap:
-        sys.exit(f"--train-roi і --val-roi перетинаються: {overlap} - це робить валідацію нечесною")
+    all_specs = set(args.train_roi) | set(args.val_roi) | set(args.test_roi)
+    if len(all_specs) != len(args.train_roi) + len(args.val_roi) + len(args.test_roi):
+        sys.exit("train-roi / val-roi / test-roi перетинаються - вибір епохи й фінальний звіт будуть нечесними")
 
     torch.manual_seed(args.seed)
     device = torch.device("cpu")
@@ -115,13 +130,17 @@ def main():
     print("Train ROI:")
     train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode,
                               args.target_max_cloud, args.seed)
-    print("Val ROI (інша географічна локація, без перетину з train):")
+    print("Val ROI (лише для вибору епохи, інша локація):")
     val_ds = build_dataset(args.root, args.val_roi, args.img_size, args.target_mode,
                             args.target_max_cloud, args.seed)
-    print(f"Разом: train={len(train_ds)}, val={len(val_ds)}")
+    print("Test ROI (лише для фінального звіту, ще інша локація):")
+    test_ds = build_dataset(args.root, args.test_roi, args.img_size, args.target_mode,
+                             args.target_max_cloud, args.seed)
+    print(f"Разом: train={len(train_ds)}, val={len(val_ds)}, test={len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
 
     model = ResidualUNet(in_ch=n_input_channels(), out_ch=n_bands()).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -134,7 +153,7 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_losses = []
-        for x, y_ref, target in train_loader:
+        for x, y_ref, target, _ in train_loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             delta = model(x)
             pred = y_ref + delta
@@ -147,7 +166,7 @@ def main():
         model.eval()
         val_losses, baseline_losses = [], []
         with torch.no_grad():
-            for x, y_ref, target in val_loader:
+            for x, y_ref, target, _ in val_loader:
                 x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
                 pred = y_ref + model(x)
                 val_losses.append(criterion(pred, target).item())
@@ -165,9 +184,11 @@ def main():
     model.load_state_dict(best_state)
     torch.save(model.state_dict(), out_dir / "model.pt")
 
-    results = evaluate(model, val_loader, device)
+    results = evaluate(model, test_loader, device)  # ТЕСТ, не val - епоху обирали за val
     model_tab = summarize(results, "model")
     base_tab = summarize(results, "baseline_yref")
+    n_clear = sum(r["n_clear_px"] for r in results)
+    n_total = sum(r["n_px"] for r in results)
 
     rmse_model = [r["model"]["rmse"] for r in results]
     rmse_base = [r["baseline_yref"]["rmse"] for r in results]
@@ -182,36 +203,41 @@ def main():
                 f"SSIM {tab['ssim'][0]:.4f}±{tab['ssim'][1]:.4f}  "
                 f"SAM {tab['sam_deg'][0]:.2f}±{tab['sam_deg'][1]:.2f}°")
 
+    rmse_sig = "значуще краще" if hi_rmse < 0 else ("не значуще (CI перетинає 0)" if lo_rmse < 0 < hi_rmse else "значуще гірше")
+    sam_sig = "значуще краще" if hi_sam < 0 else ("не значуще (CI перетинає 0)" if lo_sam < 0 < hi_sam else "значуще гірше")
+
     report = [
         "# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref",
         "",
-        f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів). "
-        f"Val ROI: {', '.join(args.val_roi)} ({len(val_ds)} патчів) - інша локація, без перетину з train.",
+        f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів).",
+        f"Val ROI (вибір епохи): {', '.join(args.val_roi)} ({len(val_ds)} патчів).",
+        f"Test ROI (фінальний звіт, НЕ бачений при виборі епохи): {', '.join(args.test_roi)} ({len(test_ds)} патчів).",
         f"Епох: {args.epochs}, розмір зображення (даунсемпл): {args.img_size}x{args.img_size}. "
-        f"Найкраща епоха за val_L1: {best_epoch} (оцінюється саме цей чекпоінт, не останній).",
+        f"Найкраща епоха за val_L1: {best_epoch}.",
+        f"RMSE/MAE/SAM рахувались лише по пікселях цілі з хмарністю < {CLEAN_PIXEL_THRESH} "
+        f"({n_clear}/{n_total} = {100*n_clear/max(n_total,1):.1f}% пікселів test-набору; SSIM - без маски). "
+        f"Лосс тренування й вибору епохи - НЕ маскований (повний target).",
         "",
         f"- Модель (y_ref + Δθ):  {fmt(model_tab)}",
         f"- Базовий рівень (y_ref): {fmt(base_tab)}",
         "",
-        f"Δ RMSE (модель - базовий) = {d_rmse:+.4f} [{lo_rmse:+.4f}, {hi_rmse:+.4f}] "
-        f"({'краще' if d_rmse < 0 else 'гірше'}, якщо <0)",
-        f"Δ SAM  (модель - базовий) = {d_sam:+.2f}° [{lo_sam:+.2f}, {hi_sam:+.2f}] "
-        f"({'краще' if d_sam < 0 else 'гірше'}, якщо <0)",
+        f"Δ RMSE (модель - базовий) = {d_rmse:+.4f} [{lo_rmse:+.4f}, {hi_rmse:+.4f}] - {rmse_sig}",
+        f"Δ SAM  (модель - базовий) = {d_sam:+.2f}° [{lo_sam:+.2f}, {hi_sam:+.2f}] - {sam_sig}",
         "",
     ]
-    criterion_met = d_rmse <= 0 and d_sam <= 0
+    criterion_met = hi_rmse <= 0 and hi_sam <= 0  # обидва мають бути ЗНАЧУЩО не гірші, не лише точково
     report.append(
-        "Критерій кроку 2 (не гірше за базовий метод за RMSE і SAM) "
+        "Критерій кроку 2 (статистично значуще не гірше за базовий метод за RMSE І SAM) "
         + ("ВИКОНАНО" if criterion_met else "НЕ виконано") + " на цьому прототипі."
     )
     report.append(
-        f"\nЦе прототип на {len(args.train_roi)} train- і {len(args.val_roi)} val-ROI - "
-        "недостатньо для дисертаційного висновку (потрібно більше регіонів, повна роздільність, "
-        ">=5 запусків з різними seed, статистична поправка на множинні порівняння)."
+        f"\nЦе прототип на {len(args.train_roi)} train-, {len(args.val_roi)} val- і {len(args.test_roi)} test-ROI, "
+        "1 запуск (не >=5 із різними seed) - недостатньо для дисертаційного висновку. CI тут відображає лише "
+        "розкид між тестовими патчами в межах цього одного навченого запуску, НЕ розкид між повторними тренуваннями."
     )
 
     (out_dir / "report.md").write_text("\n".join(report), encoding="utf-8")
-    (out_dir / "val_metrics_raw.json").write_text(json.dumps(results, indent=2))
+    (out_dir / "test_metrics_raw.json").write_text(json.dumps(results, indent=2))
     print("\n" + "\n".join(report))
     print(f"\nЗбережено: {out_dir / 'report.md'}, {out_dir / 'model.pt'}")
 

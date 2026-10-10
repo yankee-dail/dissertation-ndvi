@@ -58,7 +58,7 @@ def _strip_spines(ax):
 
 
 def fig1_training_curves():
-    log_path = ROOT / "results" / "step2_5train_1val.log"
+    log_path = ROOT / "results" / "step2_final.log"
     epochs, train_l1, val_l1, baseline = [], [], [], None
     pattern = re.compile(
         r"epoch (\d+)/\d+\s+train_L1=([\d.]+)\s+val_L1=([\d.]+)\s+baseline_yref_L1=([\d.]+)")
@@ -79,7 +79,7 @@ def fig1_training_curves():
                label=f"Базовий рівень y_ref ({baseline:.4f})")
     ax.set_xlabel("Епоха")
     ax.set_ylabel("L1 (MAE), шкала відбиття [0,1]")
-    ax.set_title("Крок 2: тренування залишкової U-Net на 5 ROI (різні континенти)")
+    ax.set_title("Крок 2: тренування залишкової U-Net (4 train ROI, val≠test)")
     ax.legend(frameon=False, fontsize=9)
     _strip_spines(ax)
     fig.tight_layout()
@@ -88,33 +88,43 @@ def fig1_training_curves():
 
 
 def fig2_scaling():
-    n_rois = [1, 3, 5]
-    d_rmse = [0.0024, -0.0029, -0.0061]   # найкращий чекпоінт, узгоджено з REPORT.md
-    d_sam = [-0.09, -0.50, -1.12]
+    # 1/3/5 - розвідувальні прогони зі СТАРОЮ методологією (чекпоінт обирався й
+    # звітувався на тому самому ROI). 4* - фінальний прогін із незалежними
+    # train/val/test ROI і маскуванням хмарних пікселів цілі (results/step2_final).
+    labels = ["1 ROI\n(розвід.)", "3 ROI\n(розвід.)", "4 ROI*\n(val≠test,\nмаск.)"]
+    d_rmse = [0.0024, -0.0029, -0.0059]
+    d_sam = [-0.09, -0.50, -1.03]
+    hatches = ["//", "//", None]
 
-    fig, axes = plt.subplots(1, 2, figsize=(9, 4))
+    fig, axes = plt.subplots(1, 2, figsize=(9, 4.2))
     for ax, deltas, ylabel, title in [
         (axes[0], d_rmse, "Δ RMSE (модель − базовий)", "RMSE: <0 означає краще за базовий"),
         (axes[1], d_sam, "Δ SAM, ° (модель − базовий)", "SAM: <0 означає краще за базовий"),
     ]:
         colors = [PALETTE["critical"] if v > 0 else PALETTE["good"] for v in deltas]
-        ax.bar([str(n) for n in n_rois], deltas, color=colors, width=0.5)
+        bars = ax.bar(labels, deltas, color=colors, width=0.55)
+        for b, h in zip(bars, hatches):
+            if h:
+                b.set_hatch(h)
+                b.set_alpha(0.6)
         ax.axhline(0, color=PALETTE["ink"], lw=1)
-        ax.set_xlabel("Кількість тренувальних ROI (локацій)")
         ax.set_ylabel(ylabel)
         ax.set_title(title, fontsize=10)
         _strip_spines(ax)
 
-    fig.suptitle("Ефект масштабування тренувальних ROI (крос-локаційна валідація, той самий val ROI)")
+    fig.suptitle("Ефект масштабування тренувальних ROI (заштриховані = розвідувальна методологія,\n"
+                  "суцільний = незалежні val/test + маскування хмарних пікселів цілі)", fontsize=10)
     fig.tight_layout()
     fig.savefig(OUT / "fig2_roi_scaling.png")
     plt.close(fig)
 
 
 def fig3_calibration():
-    labels = ["2 train ROI", "5 train ROI"]
-    coverage = [94.8, 90.3]
-    width = [0.3710, 0.2126]
+    # Обидві точки - з маскуванням хмарних пікселів цілі (апельсини-до-апельсинів):
+    # uncertainty_smoketest_v2 (1 train ROI) і uncertainty_final (4 train ROI).
+    labels = ["1 train ROI", "4 train ROI"]
+    coverage = [88.7, 90.8]
+    width = [0.2737, 0.1994]
 
     fig, axes = plt.subplots(1, 2, figsize=(9, 4))
     axes[0].bar(labels, coverage, color=PALETTE["blue"], width=0.5)
@@ -157,19 +167,19 @@ def fig4_qualitative(n_candidates=25):
     # малюнку саме виглядає хмарним, що плутає читача.
     best_idx, best_frac = 0, 1.0
     for i in range(min(n_candidates, len(ds))):
-        _, _, t = ds[i]
+        _, _, t, _ = ds[i]
         f = _cloud_frac(t.numpy())
         if f < best_frac:
             best_idx, best_frac = i, f
     print(f"Обрано патч #{best_idx} як приклад (хмарність цілі ~{best_frac:.1%} серед {n_candidates} кандидатів)")
-    x, y_ref, target = ds[best_idx]
+    x, y_ref, target, target_cloud = ds[best_idx]
     sample_idx = best_idx
 
     model = ResidualUNet(in_ch=n_input_channels(), out_ch=n_bands())
-    model.load_state_dict(torch.load(ROOT / "results/step2_5train_1val/model.pt", map_location="cpu"))
+    model.load_state_dict(torch.load(ROOT / "results/step2_final/model.pt", map_location="cpu"))
     model.eval()
     unc = ResidualUNetUncertainty(in_ch=n_input_channels(), out_ch=n_bands())
-    unc.load_state_dict(torch.load(ROOT / "results/uncertainty_5train_1calib_1test/model.pt", map_location="cpu"))
+    unc.load_state_dict(torch.load(ROOT / "results/uncertainty_final/model.pt", map_location="cpu"))
     unc.eval()
 
     with torch.no_grad():
