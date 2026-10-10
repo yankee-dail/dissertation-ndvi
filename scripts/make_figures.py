@@ -91,25 +91,34 @@ def fig2_scaling():
     # Усі три точки - ОДНАКОВА методологія: train ROI варіюється, val=asiaEast/119
     # (вибір епохи) і test=america/132 (звіт) фіксовані для всіх трьох, RMSE/MAE/SAM
     # маскують хмарні пікселі цілі. results/step2_{1,3}roi_v2 + results/step2_final (4 ROI).
+    # CI - з bootstrap по тестових патчах (train_step2.py), не з повторних тренувань.
     labels = ["1 ROI", "3 ROI", "4 ROI"]
     d_rmse = [0.0028, -0.0032, -0.0059]
+    rmse_lo = [0.0014, -0.0043, -0.0072]
+    rmse_hi = [0.0043, -0.0022, -0.0048]
     d_sam = [-0.08, -0.51, -1.03]
+    sam_lo = [-0.22, -0.68, -1.27]
+    sam_hi = [0.05, -0.34, -0.79]
 
     fig, axes = plt.subplots(1, 2, figsize=(9, 4.2))
-    for ax, deltas, ylabel, title in [
-        (axes[0], d_rmse, "Δ RMSE (модель − базовий)", "RMSE: <0 означає краще за базовий"),
-        (axes[1], d_sam, "Δ SAM, ° (модель − базовий)", "SAM: <0 означає краще за базовий"),
+    for ax, deltas, lo, hi, ylabel, title in [
+        (axes[0], d_rmse, rmse_lo, rmse_hi, "Δ RMSE (модель − базовий)", "RMSE: <0 означає краще за базовий"),
+        (axes[1], d_sam, sam_lo, sam_hi, "Δ SAM, ° (модель − базовий)", "SAM: <0 означає краще за базовий"),
     ]:
         colors = [PALETTE["critical"] if v > 0 else PALETTE["good"] for v in deltas]
-        ax.bar(labels, deltas, color=colors, width=0.5)
+        err_lo = [d - l for d, l in zip(deltas, lo)]
+        err_hi = [h - d for d, h in zip(deltas, hi)]
+        ax.bar(labels, deltas, color=colors, width=0.5,
+               yerr=[err_lo, err_hi], capsize=5,
+               error_kw=dict(ecolor=PALETTE["ink"], lw=1.3, capthick=1.3))
         ax.axhline(0, color=PALETTE["ink"], lw=1)
         ax.set_xlabel("Кількість тренувальних ROI (val/test фіксовані, однакові для всіх)")
         ax.set_ylabel(ylabel)
         ax.set_title(title, fontsize=10)
         _strip_spines(ax)
 
-    fig.suptitle("Ефект масштабування тренувальних ROI (однакова методологія для всіх точок:\n"
-                  "val≠test, маскування хмарних пікселів цілі)", fontsize=10)
+    fig.suptitle("Ефект масштабування тренувальних ROI (вуса = 95% bootstrap CI по тестових патчах;\n"
+                  "val≠test, маскування хмарних пікселів цілі - однаково для всіх точок)", fontsize=10)
     fig.tight_layout()
     fig.savefig(OUT / "fig2_roi_scaling.png")
     plt.close(fig)
