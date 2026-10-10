@@ -21,8 +21,10 @@ def conv_block(in_ch, out_ch):
     )
 
 
-class ResidualUNet(nn.Module):
-    def __init__(self, in_ch, out_ch, base=24):
+class UNetTrunk(nn.Module):
+    """Спільний енкодер-декодер; голови (детермінована чи з невизначеністю) додаються окремо."""
+
+    def __init__(self, in_ch, base=24):
         super().__init__()
         self.enc1 = conv_block(in_ch, base)
         self.enc2 = conv_block(base, base * 2)
@@ -33,8 +35,6 @@ class ResidualUNet(nn.Module):
         self.dec2 = conv_block(base * 4, base * 2)
         self.up1 = nn.ConvTranspose2d(base * 2, base, 2, stride=2)
         self.dec1 = conv_block(base * 2, base)
-
-        self.out = nn.Conv2d(base, out_ch, 1)
 
     def forward(self, x):
         e1 = self.enc1(x)
@@ -48,8 +48,7 @@ class ResidualUNet(nn.Module):
         d1 = self.up1(d2)
         d1 = self._pad_to_match(d1, e1)
         d1 = self.dec1(torch.cat([d1, e1], dim=1))
-
-        return self.out(d1)  # residual Δ, без активації на виході (може бути +/-)
+        return d1
 
     @staticmethod
     def _pad_to_match(x, ref):
@@ -57,3 +56,38 @@ class ResidualUNet(nn.Module):
         if diff_h != 0 or diff_w != 0:
             x = F.pad(x, [0, diff_w, 0, diff_h])
         return x
+
+
+class ResidualUNet(nn.Module):
+    """Крок 2: ŷ = y_ref + Δθ(x), лише детермінована поправка."""
+
+    def __init__(self, in_ch, out_ch, base=24):
+        super().__init__()
+        self.trunk = UNetTrunk(in_ch, base)
+        self.out = nn.Conv2d(base, out_ch, 1)
+
+    def forward(self, x):
+        return self.out(self.trunk(x))  # residual Δ, без активації (може бути +/-)
+
+
+class ResidualUNetUncertainty(nn.Module):
+    """Метод 2 концепції: гетероскедастична голова - модель повертає (Δ, log σ).
+
+    ŷ = y_ref + Δθ(x), σ = exp(log_σθ(x)) (clamp для стабільності навчання).
+    Дві окремі 1x1-голови на тому самому стовбурі - дешевше за ансамбль/дифузію,
+    це "основний варіант" з концепції, не порівняльний дифузійний.
+    """
+
+    def __init__(self, in_ch, out_ch, base=24, log_sigma_min=-7.0, log_sigma_max=3.0):
+        super().__init__()
+        self.trunk = UNetTrunk(in_ch, base)
+        self.delta_head = nn.Conv2d(base, out_ch, 1)
+        self.log_sigma_head = nn.Conv2d(base, out_ch, 1)
+        self.log_sigma_min = log_sigma_min
+        self.log_sigma_max = log_sigma_max
+
+    def forward(self, x):
+        feat = self.trunk(x)
+        delta = self.delta_head(feat)
+        log_sigma = self.log_sigma_head(feat).clamp(self.log_sigma_min, self.log_sigma_max)
+        return delta, log_sigma
