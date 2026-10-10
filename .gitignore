@@ -8,3 +8,9 @@ results/
 *.tif
 *.pt
 .DS_Store
+
+# найкращі прогони зберігаються для відстежуваності (виняток із results/ і *.pt вище)
+!results/step2_5train_1val/
+!results/step2_5train_1val/**
+!results/uncertainty_5train_1calib_1test/
+!results/uncertainty_5train_1calib_1test/**
