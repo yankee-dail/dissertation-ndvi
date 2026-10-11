@@ -20,5 +20,9 @@ results/
 !results/uncertainty_final/**
 !results/uncertainty_1roi_v2/
 !results/uncertainty_1roi_v2/**
+!results/volume_1roi_238/
+!results/volume_1roi_238/**
+!results/volume_4roi_240/
+!results/volume_4roi_240/**
 !results/figures/
 !results/figures/**

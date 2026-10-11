@@ -55,12 +55,17 @@ def resolve_roi_spec(root, spec):
     return full_root, roi_dir, roi
 
 
-def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed):
+def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed, max_patches_per_roi=None):
+    """max_patches_per_roi дозволяє зрівняти ЗАГАЛЬНИЙ обсяг даних між прогонами з різною
+    кількістю ROI (контроль обсягу при перевірці ефекту різноманітності локацій) - бере
+    перші N патчів з кожного переліченого ROI замість усіх."""
     from torch.utils.data import ConcatDataset
     parts = []
     for spec in specs:
         r, roi_dir, roi = resolve_roi_spec(root, spec)
         n = count_patches(r, roi_dir, roi)
+        if max_patches_per_roi is not None:
+            n = min(n, max_patches_per_roi)
         ds = SEN12MSCRTSPatchDataset(root=r, roi_dir=roi_dir, roi=roi, patch_indices=range(n),
                                       img_size=img_size, target_mode=target_mode,
                                       target_max_cloud=target_max_cloud, seed=seed)
@@ -115,6 +120,9 @@ def main():
     ap.add_argument("--img-size", type=int, default=128, help="просторовий даунсемпл для швидкості прототипу")
     ap.add_argument("--target-mode", default="random_clean", choices=["argmin", "random_clean"])
     ap.add_argument("--target-max-cloud", type=float, default=0.3)
+    ap.add_argument("--max-train-patches-per-roi", type=int, default=None,
+                     help="обмежити кожен train ROI цією кількістю патчів - для контролю "
+                          "загального обсягу при порівнянні кількості ROI")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_prototype")
     ap.add_argument("--n-boot", type=int, default=2000)
@@ -129,7 +137,7 @@ def main():
 
     print("Train ROI:")
     train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode,
-                              args.target_max_cloud, args.seed)
+                              args.target_max_cloud, args.seed, args.max_train_patches_per_roi)
     print("Val ROI (лише для вибору епохи, інша локація):")
     val_ds = build_dataset(args.root, args.val_roi, args.img_size, args.target_mode,
                             args.target_max_cloud, args.seed)
