@@ -55,10 +55,21 @@ def resolve_roi_spec(root, spec):
     return full_root, roi_dir, roi
 
 
-def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed, max_patches_per_roi=None):
+def resolve_s1_root(s2_root):
+    """root/s2_africa_test -> root/s1_africa_test (сусідня директорія, той самий датасет,
+    інша модальність) - підходить лише коли останній сегмент шляху починається з 's2_'."""
+    name = s2_root.name
+    if not name.startswith("s2_"):
+        raise ValueError(f"не можу вивести S1-шлях з '{s2_root}' - очікував сегмент, що починається з 's2_'")
+    return s2_root.parent / ("s1_" + name[len("s2_"):])
+
+
+def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed, max_patches_per_roi=None,
+                   use_s1=False):
     """max_patches_per_roi дозволяє зрівняти ЗАГАЛЬНИЙ обсяг даних між прогонами з різною
     кількістю ROI (контроль обсягу при перевірці ефекту різноманітності локацій) - бере
-    перші N патчів з кожного переліченого ROI замість усіх."""
+    перші N патчів з кожного переліченого ROI замість усіх. use_s1 додає VV/VH з сусідньої
+    s1_*-директорії як додаткові вхідні канали (див. resolve_s1_root)."""
     from torch.utils.data import ConcatDataset
     parts = []
     for spec in specs:
@@ -66,10 +77,11 @@ def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed, ma
         n = count_patches(r, roi_dir, roi)
         if max_patches_per_roi is not None:
             n = min(n, max_patches_per_roi)
+        s1_root = resolve_s1_root(r) if use_s1 else None
         ds = SEN12MSCRTSPatchDataset(root=r, roi_dir=roi_dir, roi=roi, patch_indices=range(n),
                                       img_size=img_size, target_mode=target_mode,
-                                      target_max_cloud=target_max_cloud, seed=seed)
-        print(f"  {spec}: {n} патчів")
+                                      target_max_cloud=target_max_cloud, seed=seed, s1_root=s1_root)
+        print(f"  {spec}: {n} патчів" + (" (+S1)" if use_s1 else ""))
         parts.append(ds)
     return ConcatDataset(parts) if len(parts) > 1 else parts[0]
 
@@ -123,6 +135,9 @@ def main():
     ap.add_argument("--max-train-patches-per-roi", type=int, default=None,
                      help="обмежити кожен train ROI цією кількістю патчів - для контролю "
                           "загального обсягу при порівнянні кількості ROI")
+    ap.add_argument("--use-s1", action="store_true",
+                     help="додати VV/VH (Sentinel-1) ref і near кадрів як вхідні канали; "
+                          "потребує сусідньої директорії s1_<регіон> з тією самою структурою")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_prototype")
     ap.add_argument("--n-boot", type=int, default=2000)
@@ -137,20 +152,21 @@ def main():
 
     print("Train ROI:")
     train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode,
-                              args.target_max_cloud, args.seed, args.max_train_patches_per_roi)
+                              args.target_max_cloud, args.seed, args.max_train_patches_per_roi,
+                              use_s1=args.use_s1)
     print("Val ROI (лише для вибору епохи, інша локація):")
     val_ds = build_dataset(args.root, args.val_roi, args.img_size, args.target_mode,
-                            args.target_max_cloud, args.seed)
+                            args.target_max_cloud, args.seed, use_s1=args.use_s1)
     print("Test ROI (лише для фінального звіту, ще інша локація):")
     test_ds = build_dataset(args.root, args.test_roi, args.img_size, args.target_mode,
-                             args.target_max_cloud, args.seed)
+                             args.target_max_cloud, args.seed, use_s1=args.use_s1)
     print(f"Разом: train={len(train_ds)}, val={len(val_ds)}, test={len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
 
-    model = ResidualUNet(in_ch=n_input_channels(), out_ch=n_bands()).to(device)
+    model = ResidualUNet(in_ch=n_input_channels(include_s1=args.use_s1), out_ch=n_bands()).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.L1Loss()
 
@@ -217,6 +233,7 @@ def main():
     report = [
         "# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref",
         "",
+        f"Вхід включає Sentinel-1 (VV/VH): {'так' if args.use_s1 else 'ні'}.",
         f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів).",
         f"Val ROI (вибір епохи): {', '.join(args.val_roi)} ({len(val_ds)} патчів).",
         f"Test ROI (фінальний звіт, НЕ бачений при виборі епохи): {', '.join(args.test_roi)} ({len(test_ds)} патчів).",

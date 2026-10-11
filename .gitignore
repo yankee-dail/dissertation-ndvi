@@ -32,5 +32,9 @@ results/
 !results/step2_seed3/**
 !results/step2_seed4/
 !results/step2_seed4/**
+!results/ablation_base/
+!results/ablation_base/**
+!results/ablation_s1/
+!results/ablation_s1/**
 !results/figures/
 !results/figures/**

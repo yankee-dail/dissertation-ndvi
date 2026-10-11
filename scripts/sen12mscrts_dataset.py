@@ -27,11 +27,17 @@ import torch
 from torch.utils.data import Dataset
 
 REFL_MAX = 10000.0
+S1_DB_MIN, S1_DB_MAX = -25.0, 0.0  # діапазон з офіційного process_SAR (dataLoader.py)
 
 
 def read_tif(path):
     with rasterio.open(path) as tif:
         return tif.read().astype(np.float32)
+
+
+def normalize_s1(img):
+    """img: (2, H, W) VV/VH у дБ. Кліп у [-25, 0] і масштаб у [0,1] - як в офіційному коді."""
+    return ((np.clip(img, S1_DB_MIN, S1_DB_MAX) - S1_DB_MIN) / (S1_DB_MAX - S1_DB_MIN)).astype(np.float32)
 
 
 def read_tif_decimated(path, out_hw=32):
@@ -57,7 +63,11 @@ def pick_target_idx(frac, rng, max_cloud, mode="random_clean"):
 
 class SEN12MSCRTSPatchDataset(Dataset):
     def __init__(self, root, roi_dir, roi, patch_indices, n_time_points=30,
-                 target_mode="random_clean", target_max_cloud=0.3, seed=0, img_size=None):
+                 target_mode="random_clean", target_max_cloud=0.3, seed=0, img_size=None,
+                 s1_root=None):
+        """s1_root: директорія з тією самою структурою <roi_dir>/<roi>/S1/<tdx>/*.tif -
+        якщо задано, до x додається VV/VH (ref і near кадри, 2x2=4 канали). S1 НІКОЛИ не
+        йде в ціль - лише як додатковий вхід (радар не замінює оптичну ground truth)."""
         self.root = Path(root)
         self.roi_dir, self.roi = roi_dir, roi
         self.patch_indices = list(patch_indices)
@@ -66,6 +76,7 @@ class SEN12MSCRTSPatchDataset(Dataset):
         self.target_max_cloud = target_max_cloud
         self.seed = seed
         self.img_size = img_size
+        self.s1_root = Path(s1_root) if s1_root is not None else None
 
         self.series = []  # [tdx] -> sorted list of patch file paths
         for tdx in range(n_time_points):
@@ -75,6 +86,16 @@ class SEN12MSCRTSPatchDataset(Dataset):
         lengths = {len(f) for f in self.series}
         if len(lengths) != 1:
             raise ValueError(f"різна кількість патчів між часовими точками: {lengths}")
+
+        if self.s1_root is not None:
+            self.s1_series = []
+            for tdx in range(n_time_points):
+                d = self.s1_root / roi_dir / roi / "S1" / str(tdx)
+                files = sorted(f for f in d.iterdir() if f.suffix == ".tif")
+                self.s1_series.append(files)
+            s1_lengths = {len(f) for f in self.s1_series}
+            if s1_lengths != lengths:
+                raise ValueError(f"кількість патчів S1 ({s1_lengths}) не збігається з S2 ({lengths})")
 
         # Одноразовий прохід: обираємо (target_idx, ref_idx, near_idx) на декантованих
         # (швидких) версіях зображень, щоб потім на кожній епосі читати лише 3 повнорозмірні
@@ -132,7 +153,14 @@ class SEN12MSCRTSPatchDataset(Dataset):
 
         day_gap = np.full((1,) + y_ref.shape[1:], (t_days[near_idx] - t_days[target_idx]) / 365.0,
                            dtype=np.float32)
-        x = np.concatenate([y_ref, x_near, cloud_near, day_gap], axis=0)
+        parts = [y_ref, x_near, cloud_near, day_gap]
+
+        if self.s1_root is not None:
+            s1_ref = normalize_s1(read_tif(self.s1_series[ref_idx][pdx]))
+            s1_near = normalize_s1(read_tif(self.s1_series[near_idx][pdx]))
+            parts += [self._maybe_resize(s1_ref), self._maybe_resize(s1_near)]
+
+        x = np.concatenate(parts, axis=0)
 
         # Хмарність ЦІЛІ (а не входу): target_max_cloud - поріг на СЕРЕДНЮ хмарність усього
         # патча, тож окремі пікселі цілі можуть лишатись хмарними. Повертаємо карту, щоб
@@ -153,5 +181,6 @@ def n_bands():
     return 13
 
 
-def n_input_channels():
-    return 13 + 13 + 1 + 1  # y_ref + x_near + cloud_near + day_gap
+def n_input_channels(include_s1=False):
+    base = 13 + 13 + 1 + 1  # y_ref + x_near + cloud_near + day_gap
+    return base + (2 + 2 if include_s1 else 0)  # + VV/VH для ref і near
