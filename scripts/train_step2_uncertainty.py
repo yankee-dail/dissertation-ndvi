@@ -130,7 +130,8 @@ def main():
         sys.exit("train-roi / calib-roi / test-roi перетинаються - калібрування й оцінка будуть нечесними")
 
     torch.manual_seed(args.seed)
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Пристрій: {device}")
 
     print("Train ROI:")
     train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed)
