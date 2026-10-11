@@ -24,5 +24,13 @@ results/
 !results/volume_1roi_238/**
 !results/volume_4roi_240/
 !results/volume_4roi_240/**
+!results/step2_seed1/
+!results/step2_seed1/**
+!results/step2_seed2/
+!results/step2_seed2/**
+!results/step2_seed3/
+!results/step2_seed3/**
+!results/step2_seed4/
+!results/step2_seed4/**
 !results/figures/
 !results/figures/**
