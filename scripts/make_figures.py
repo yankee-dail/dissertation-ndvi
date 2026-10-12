@@ -172,12 +172,12 @@ def fig4_qualitative(n_candidates=25):
     # малюнку саме виглядає хмарним, що плутає читача.
     best_idx, best_frac = 0, 1.0
     for i in range(min(n_candidates, len(ds))):
-        _, _, t, _ = ds[i]
+        _, _, t, _, _ = ds[i]
         f = _cloud_frac(t.numpy())
         if f < best_frac:
             best_idx, best_frac = i, f
     print(f"Обрано патч #{best_idx} як приклад (хмарність цілі ~{best_frac:.1%} серед {n_candidates} кандидатів)")
-    x, y_ref, target, target_cloud = ds[best_idx]
+    x, y_ref, target, target_cloud, _ = ds[best_idx]
     sample_idx = best_idx
 
     model = ResidualUNet(in_ch=n_input_channels(), out_ch=n_bands())

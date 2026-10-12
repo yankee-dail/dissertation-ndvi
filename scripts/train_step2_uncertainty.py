@@ -61,7 +61,7 @@ def nonconformity_scores(model, loader, device, clean_thresh=CLEAN_PIXEL_THRESH)
     model.eval()
     scores = []
     with torch.no_grad():
-        for x, y_ref, target, target_cloud in loader:
+        for x, y_ref, target, target_cloud, _ in loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             mu, sigma = predict(model, x, y_ref)
             r = (target - mu).abs() / sigma.clamp(min=1e-4)
@@ -77,7 +77,7 @@ def evaluate_with_intervals(model, loader, device, q, clean_thresh=CLEAN_PIXEL_T
     widths = []
     n_clear_total, n_px_total = 0, 0
     with torch.no_grad():
-        for x, y_ref, target, target_cloud in loader:
+        for x, y_ref, target, target_cloud, _ in loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             mu, sigma = predict(model, x, y_ref)
             lo, hi = mu - q * sigma, mu + q * sigma
@@ -155,7 +155,7 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_losses = []
-        for x, y_ref, target, _ in train_loader:
+        for x, y_ref, target, _, ref_days in train_loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             delta, log_sigma = model(x)
             loss = gaussian_nll(delta, log_sigma, y_ref, target)
@@ -167,7 +167,7 @@ def main():
         model.eval()
         calib_losses = []
         with torch.no_grad():
-            for x, y_ref, target, _ in calib_loader:
+            for x, y_ref, target, _, _ in calib_loader:
                 x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
                 delta, log_sigma = model(x)
                 calib_losses.append(gaussian_nll(delta, log_sigma, y_ref, target).item())

@@ -145,7 +145,7 @@ def evaluate(model, loader, device, clean_thresh=CLEAN_PIXEL_THRESH):
     model.eval()
     results = []
     with torch.no_grad():
-        for x, y_ref, target, target_cloud in loader:
+        for x, y_ref, target, target_cloud, _ in loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             delta = model(x)
             pred = (y_ref + delta).clamp(0, 1)
@@ -233,15 +233,20 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.L1Loss()
 
-    def phenological_penalty(pred, y_ref, x):
+    def phenological_penalty(pred, y_ref, ref_days):
         """Δ NDVI (модель - y_ref) за межами емпіричної смуги правдоподібності, масштабованої
-        на реальний часовий проміжок (день останнього near-кадру відносно цілі, з каналу x).
-        Перевищення верхньої межі (неправдоподібне позеленіння) карається w_up разів сильніше за
-        падіння нижче нижньої (правдоподібний стрес) - асиметрія з концепції Методу 1."""
-        day_gap = (x[:, -1:, :, :] * 365.0).abs()  # канал day_gap у x нормалізований /365
-        delta = ndvi(pred) - ndvi(y_ref)
-        allowed_hi = rate_hi * day_gap[:, 0]
-        allowed_lo = rate_lo * day_gap[:, 0]
+        на РЕАЛЬНИЙ проміжок y_ref->ціль (ref_days - з Dataset, НЕ плутати з каналом day_gap
+        у x, який кодує near->ціль, інший інтервал). Перевищення верхньої межі (неправдоподібне
+        позеленіння) карається w_up разів сильніше за падіння нижче нижньої (правдоподібний
+        стрес) - асиметрія з концепції Методу 1."""
+        gap = ref_days.to(pred.device).clamp(min=1.0).view(-1, 1, 1)  # (B,1,1), мін. 1 день
+        # pred тут НЕ clamp-нутий (на відміну від evaluate()) - на старті тренування
+        # необмежена модель може дати відбиття поза [0,1] чи близько нуля в обох каналах,
+        # що робить ділення NDVI нестабільним (вибух градієнта). Для самого штрафу
+        # клампимо лише локально - основний L1-лосс далі рахується на нестиснутому pred.
+        delta = ndvi(pred.clamp(0, 1)) - ndvi(y_ref)  # (B, H, W)
+        allowed_hi = rate_hi * gap
+        allowed_lo = rate_lo * gap
         over = torch.relu(delta - allowed_hi)
         under = torch.relu(allowed_lo - delta)
         return args.phen_asym_ratio * over.mean() + under.mean()
@@ -253,13 +258,13 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_losses = []
-        for x, y_ref, target, _ in train_loader:
+        for x, y_ref, target, _, ref_days in train_loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
             delta = model(x)
             pred = y_ref + delta
             loss = criterion(pred, target)
             if args.phen_weight > 0:
-                loss = loss + args.phen_weight * phenological_penalty(pred, y_ref, x)
+                loss = loss + args.phen_weight * phenological_penalty(pred, y_ref, ref_days)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -268,7 +273,7 @@ def main():
         model.eval()
         val_losses, baseline_losses = [], []
         with torch.no_grad():
-            for x, y_ref, target, _ in val_loader:
+            for x, y_ref, target, _, _ in val_loader:
                 x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
                 pred = y_ref + model(x)
                 val_losses.append(criterion(pred, target).item())

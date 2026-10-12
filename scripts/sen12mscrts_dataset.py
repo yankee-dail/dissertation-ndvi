@@ -167,7 +167,12 @@ class SEN12MSCRTSPatchDataset(Dataset):
         # метрики могли виключити ці пікселі замість порівнювати прогноз із хмарою.
         target_cloud = self._maybe_resize(simple_cloud_prob(target_raw)[None].astype(np.float32))[0]
 
-        return torch.from_numpy(x), torch.from_numpy(y_ref), torch.from_numpy(target), torch.from_numpy(target_cloud)
+        # Інтервал y_ref -> ціль (ДНІ, не плутати з day_gap у x, який near->ціль) - потрібен
+        # фенологічному члену втрат для масштабування допустимої швидкості зміни NDVI.
+        ref_target_days = np.float32(abs(t_days[target_idx] - t_days[ref_idx]))
+
+        return (torch.from_numpy(x), torch.from_numpy(y_ref), torch.from_numpy(target),
+                torch.from_numpy(target_cloud), torch.tensor(ref_target_days))
 
     @staticmethod
     def _parse_day(filename):
