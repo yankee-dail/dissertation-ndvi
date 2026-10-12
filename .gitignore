@@ -36,5 +36,13 @@ results/
 !results/ablation_base/**
 !results/ablation_s1/
 !results/ablation_s1/**
+!results/uncertainty_seed1/
+!results/uncertainty_seed1/**
+!results/uncertainty_seed2/
+!results/uncertainty_seed2/**
+!results/uncertainty_seed3/
+!results/uncertainty_seed3/**
+!results/uncertainty_seed4/
+!results/uncertainty_seed4/**
 !results/figures/
 !results/figures/**

@@ -36,9 +36,60 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent))
-from sen12mscrts_dataset import SEN12MSCRTSPatchDataset, n_bands, n_input_channels
+from sen12mscrts_dataset import (SEN12MSCRTSPatchDataset, n_bands, n_input_channels,
+                                  read_tif_decimated, simple_cloud_prob, REFL_MAX)
 from model import ResidualUNet
 from eval_protocol import all_metrics, bootstrap_diff_ci, CLEAN_PIXEL_THRESH
+
+RED_IDX, NIR_IDX = 3, 7  # B4, B8 у 13-канальному стеку SEN12MS-CR-TS
+
+
+def ndvi(img):
+    """img: (..., C, H, W) з C=13 (нормалізоване відбиття [0,1] або сире - формула інваріантна
+    до масштабу, бо це відношення). Повертає (..., H, W)."""
+    red, nir = img[..., RED_IDX, :, :], img[..., NIR_IDX, :, :]
+    return (nir - red) / (nir + red + 1e-6)
+
+
+def compute_ndvi_rate_bounds(root, specs, lo_pct=5, hi_pct=95, patch_stride=5, clean_thresh=0.2):
+    """Мінімальна версія ідеї Zhang (порогове визначення фенологічної динаміки з власного
+    часового ряду, без зовнішніх даних чи фітингу логістичної кривої): на підвибірці патчів
+    з train ROI рахує швидкість зміни NDVI (NDVI/день) між послідовними ЧИСТИМИ (хмарність
+    < clean_thresh) спостереженнями, повертає lo_pct/hi_pct перцентилі - емпіричну "смугу
+    правдоподібності" для динаміки NDVI, яка потім штрафує модель асиметрично (§фенологія)."""
+    from datetime import datetime
+
+    rates = []
+    for spec in specs:
+        r, roi_dir, roi = resolve_roi_spec(root, spec)
+        n = count_patches(r, roi_dir, roi)
+        s2_dirs = [Path(r) / roi_dir / roi / "S2" / str(tdx) for tdx in range(30)]
+        series_per_tdx = [sorted(f for f in d.iterdir() if f.suffix == ".tif") for d in s2_dirs]
+        for pdx in range(0, n, patch_stride):
+            obs = []
+            for tdx in range(30):
+                if pdx >= len(series_per_tdx[tdx]):
+                    continue
+                f = series_per_tdx[tdx][pdx]
+                img = read_tif_decimated(f, out_hw=16)
+                frac = float(simple_cloud_prob(img).mean())
+                if frac >= clean_thresh:
+                    continue
+                day = (datetime.strptime(f.name.split("_")[5], "%Y-%m-%d") - datetime(2014, 4, 3)).days
+                n_val = float(np.clip(ndvi(np.clip(img, 0, REFL_MAX) / REFL_MAX), -1, 1).mean())
+                obs.append((day, n_val))
+            obs.sort()
+            for i in range(1, len(obs)):
+                dt = obs[i][0] - obs[i - 1][0]
+                if dt > 0:
+                    rates.append((obs[i][1] - obs[i - 1][1]) / dt)
+
+    if len(rates) < 20:
+        print(f"[warn] лише {len(rates)} оцінок швидкості NDVI - пороги можуть бути нестабільними")
+    rate_lo, rate_hi = float(np.percentile(rates, lo_pct)), float(np.percentile(rates, hi_pct))
+    print(f"Пороги динаміки NDVI (з {len(rates)} пар чистих спостережень train ROI): "
+          f"[{rate_lo:.4f}, {rate_hi:.4f}] NDVI/день (p{lo_pct}/p{hi_pct})")
+    return rate_lo, rate_hi
 
 
 def count_patches(root, roi_dir, roi):
@@ -138,6 +189,13 @@ def main():
     ap.add_argument("--use-s1", action="store_true",
                      help="додати VV/VH (Sentinel-1) ref і near кадрів як вхідні канали; "
                           "потребує сусідньої директорії s1_<регіон> з тією самою структурою")
+    ap.add_argument("--phen-weight", type=float, default=0.0,
+                     help="вага фенологічного члена втрат (0 = вимкнено, L1 як раніше). "
+                          "Пороги швидкості NDVI оцінюються з train ROI автоматично (Zhang-поріг, "
+                          "мінімальна версія - без фітингу логістичної кривої чи зовнішніх даних)")
+    ap.add_argument("--phen-asym-ratio", type=float, default=5.0,
+                     help="у скільки разів сильніше штрафується перевищення верхньої межі "
+                          "(неправдоподібне позеленіння), ніж падіння нижче нижньої (стрес)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_prototype")
     ap.add_argument("--n-boot", type=int, default=2000)
@@ -167,9 +225,26 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
 
+    rate_lo = rate_hi = None
+    if args.phen_weight > 0:
+        rate_lo, rate_hi = compute_ndvi_rate_bounds(args.root, args.train_roi)
+
     model = ResidualUNet(in_ch=n_input_channels(include_s1=args.use_s1), out_ch=n_bands()).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.L1Loss()
+
+    def phenological_penalty(pred, y_ref, x):
+        """Δ NDVI (модель - y_ref) за межами емпіричної смуги правдоподібності, масштабованої
+        на реальний часовий проміжок (день останнього near-кадру відносно цілі, з каналу x).
+        Перевищення верхньої межі (неправдоподібне позеленіння) карається w_up разів сильніше за
+        падіння нижче нижньої (правдоподібний стрес) - асиметрія з концепції Методу 1."""
+        day_gap = (x[:, -1:, :, :] * 365.0).abs()  # канал day_gap у x нормалізований /365
+        delta = ndvi(pred) - ndvi(y_ref)
+        allowed_hi = rate_hi * day_gap[:, 0]
+        allowed_lo = rate_lo * day_gap[:, 0]
+        over = torch.relu(delta - allowed_hi)
+        under = torch.relu(allowed_lo - delta)
+        return args.phen_asym_ratio * over.mean() + under.mean()
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -183,6 +258,8 @@ def main():
             delta = model(x)
             pred = y_ref + delta
             loss = criterion(pred, target)
+            if args.phen_weight > 0:
+                loss = loss + args.phen_weight * phenological_penalty(pred, y_ref, x)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -235,6 +312,7 @@ def main():
         "# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref",
         "",
         f"Вхід включає Sentinel-1 (VV/VH): {'так' if args.use_s1 else 'ні'}.",
+        f"Фенологічний член втрат: {'так, вага ' + str(args.phen_weight) + f', межі [{rate_lo:.4f},{rate_hi:.4f}] NDVI/день, асиметрія x' + str(args.phen_asym_ratio) if args.phen_weight > 0 else 'ні'}.",
         f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів).",
         f"Val ROI (вибір епохи): {', '.join(args.val_roi)} ({len(val_ds)} патчів).",
         f"Test ROI (фінальний звіт, НЕ бачений при виборі епохи): {', '.join(args.test_roi)} ({len(test_ds)} патчів).",
