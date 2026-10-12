@@ -46,5 +46,7 @@ results/
 !results/uncertainty_seed4/**
 !results/phen_full/
 !results/phen_full/**
+!results/era5_phen_full/
+!results/era5_phen_full/**
 !results/figures/
 !results/figures/**

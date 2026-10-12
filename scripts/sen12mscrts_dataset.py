@@ -64,10 +64,13 @@ def pick_target_idx(frac, rng, max_cloud, mode="random_clean"):
 class SEN12MSCRTSPatchDataset(Dataset):
     def __init__(self, root, roi_dir, roi, patch_indices, n_time_points=30,
                  target_mode="random_clean", target_max_cloud=0.3, seed=0, img_size=None,
-                 s1_root=None):
+                 s1_root=None, era5_path=None):
         """s1_root: директорія з тією самою структурою <roi_dir>/<roi>/S1/<tdx>/*.tif -
         якщо задано, до x додається VV/VH (ref і near кадри, 2x2=4 канали). S1 НІКОЛИ не
-        йде в ціль - лише як додатковий вхід (радар не замінює оптичну ground truth)."""
+        йде в ціль - лише як додатковий вхід (радар не замінює оптичну ground truth).
+        era5_path: шлях до .nc від fetch_era5.py (один на ROI) - якщо задано, 5-й елемент
+        повертаного кортежу - це різниця кумулятивного GDD (а не днів) між y_ref і ціллю,
+        точніше масштабує фенологічний штраф (GDD, не календарний час, визначає фенофазу)."""
         self.root = Path(root)
         self.roi_dir, self.roi = roi_dir, roi
         self.patch_indices = list(patch_indices)
@@ -77,6 +80,11 @@ class SEN12MSCRTSPatchDataset(Dataset):
         self.seed = seed
         self.img_size = img_size
         self.s1_root = Path(s1_root) if s1_root is not None else None
+
+        self.era5 = None
+        if era5_path is not None:
+            from era5_lookup import Era5Lookup
+            self.era5 = Era5Lookup(era5_path)
 
         self.series = []  # [tdx] -> sorted list of patch file paths
         for tdx in range(n_time_points):
@@ -167,12 +175,24 @@ class SEN12MSCRTSPatchDataset(Dataset):
         # метрики могли виключити ці пікселі замість порівнювати прогноз із хмарою.
         target_cloud = self._maybe_resize(simple_cloud_prob(target_raw)[None].astype(np.float32))[0]
 
-        # Інтервал y_ref -> ціль (ДНІ, не плутати з day_gap у x, який near->ціль) - потрібен
-        # фенологічному члену втрат для масштабування допустимої швидкості зміни NDVI.
-        ref_target_days = np.float32(abs(t_days[target_idx] - t_days[ref_idx]))
+        # Інтервал y_ref -> ціль - потрібен фенологічному члену втрат для масштабування
+        # допустимої швидкості зміни NDVI. У GDD (точніше, бо фенофаза залежить від суми
+        # ефективних температур, не календарного часу), якщо є ERA5; інакше - у днях
+        # (не плутати з day_gap у x, який кодує near->ціль, інший інтервал).
+        if self.era5 is not None:
+            gdd_target, _ = self.era5(self._day_to_date(t_days[target_idx]))
+            gdd_ref, _ = self.era5(self._day_to_date(t_days[ref_idx]))
+            ref_target_scale = np.float32(abs(gdd_target - gdd_ref))
+        else:
+            ref_target_scale = np.float32(abs(t_days[target_idx] - t_days[ref_idx]))
 
         return (torch.from_numpy(x), torch.from_numpy(y_ref), torch.from_numpy(target),
-                torch.from_numpy(target_cloud), torch.tensor(ref_target_days))
+                torch.from_numpy(target_cloud), torch.tensor(ref_target_scale))
+
+    @staticmethod
+    def _day_to_date(t_day):
+        from datetime import datetime, timedelta
+        return (datetime(2014, 4, 3) + timedelta(days=int(t_day))).date()
 
     @staticmethod
     def _parse_day(filename):

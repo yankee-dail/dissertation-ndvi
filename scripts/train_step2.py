@@ -51,13 +51,22 @@ def ndvi(img):
     return (nir - red) / (nir + red + 1e-6)
 
 
-def compute_ndvi_rate_bounds(root, specs, lo_pct=5, hi_pct=95, patch_stride=5, clean_thresh=0.2):
+def compute_ndvi_rate_bounds(root, specs, lo_pct=5, hi_pct=95, patch_stride=5, clean_thresh=0.2,
+                              era5_root=None):
     """Мінімальна версія ідеї Zhang (порогове визначення фенологічної динаміки з власного
-    часового ряду, без зовнішніх даних чи фітингу логістичної кривої): на підвибірці патчів
-    з train ROI рахує швидкість зміни NDVI (NDVI/день) між послідовними ЧИСТИМИ (хмарність
-    < clean_thresh) спостереженнями, повертає lo_pct/hi_pct перцентилі - емпіричну "смугу
-    правдоподібності" для динаміки NDVI, яка потім штрафує модель асиметрично (§фенологія)."""
+    часового ряду, без фітингу логістичної кривої): на підвибірці патчів з train ROI рахує
+    швидкість зміни NDVI між послідовними ЧИСТИМИ (хмарність < clean_thresh) спостереженнями,
+    повертає lo_pct/hi_pct перцентилі - емпіричну "смугу правдоподібності" для динаміки NDVI
+    (§фенологія). Без era5_root - швидкість у NDVI/день; з era5_root - у NDVI/GDD (точніше,
+    бо фенофаза залежить від суми ефективних температур, не календарного часу) - МАЄ бути
+    тим самим вибором одиниць, що й у phenological_penalty, інакше масштаб штрафу зламається."""
     from datetime import datetime
+
+    era5_luts = {}
+    if era5_root is not None:
+        from era5_lookup import Era5Lookup, resolve_era5_path
+        for spec in specs:
+            era5_luts[spec] = Era5Lookup(resolve_era5_path(spec, era5_root))
 
     rates = []
     for spec in specs:
@@ -65,6 +74,7 @@ def compute_ndvi_rate_bounds(root, specs, lo_pct=5, hi_pct=95, patch_stride=5, c
         n = count_patches(r, roi_dir, roi)
         s2_dirs = [Path(r) / roi_dir / roi / "S2" / str(tdx) for tdx in range(30)]
         series_per_tdx = [sorted(f for f in d.iterdir() if f.suffix == ".tif") for d in s2_dirs]
+        lut = era5_luts.get(spec)
         for pdx in range(0, n, patch_stride):
             obs = []
             for tdx in range(30):
@@ -75,20 +85,22 @@ def compute_ndvi_rate_bounds(root, specs, lo_pct=5, hi_pct=95, patch_stride=5, c
                 frac = float(simple_cloud_prob(img).mean())
                 if frac >= clean_thresh:
                     continue
-                day = (datetime.strptime(f.name.split("_")[5], "%Y-%m-%d") - datetime(2014, 4, 3)).days
+                dt_obj = datetime.strptime(f.name.split("_")[5], "%Y-%m-%d")
+                x_val = lut(dt_obj.date())[0] if lut is not None else (dt_obj - datetime(2014, 4, 3)).days
                 n_val = float(np.clip(ndvi(np.clip(img, 0, REFL_MAX) / REFL_MAX), -1, 1).mean())
-                obs.append((day, n_val))
+                obs.append((x_val, n_val))
             obs.sort()
             for i in range(1, len(obs)):
-                dt = obs[i][0] - obs[i - 1][0]
-                if dt > 0:
-                    rates.append((obs[i][1] - obs[i - 1][1]) / dt)
+                dx = obs[i][0] - obs[i - 1][0]
+                if dx > 0:
+                    rates.append((obs[i][1] - obs[i - 1][1]) / dx)
 
     if len(rates) < 20:
         print(f"[warn] лише {len(rates)} оцінок швидкості NDVI - пороги можуть бути нестабільними")
     rate_lo, rate_hi = float(np.percentile(rates, lo_pct)), float(np.percentile(rates, hi_pct))
+    unit = "NDVI/GDD" if era5_root is not None else "NDVI/день"
     print(f"Пороги динаміки NDVI (з {len(rates)} пар чистих спостережень train ROI): "
-          f"[{rate_lo:.4f}, {rate_hi:.4f}] NDVI/день (p{lo_pct}/p{hi_pct})")
+          f"[{rate_lo:.4f}, {rate_hi:.4f}] {unit} (p{lo_pct}/p{hi_pct})")
     return rate_lo, rate_hi
 
 
@@ -116,12 +128,14 @@ def resolve_s1_root(s2_root):
 
 
 def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed, max_patches_per_roi=None,
-                   use_s1=False):
+                   use_s1=False, era5_root=None):
     """max_patches_per_roi дозволяє зрівняти ЗАГАЛЬНИЙ обсяг даних між прогонами з різною
     кількістю ROI (контроль обсягу при перевірці ефекту різноманітності локацій) - бере
     перші N патчів з кожного переліченого ROI замість усіх. use_s1 додає VV/VH з сусідньої
-    s1_*-директорії як додаткові вхідні канали (див. resolve_s1_root)."""
+    s1_*-директорії як додаткові вхідні канали (див. resolve_s1_root). era5_root вмикає
+    GDD-масштабування фенологічного штрафу замість днів (див. era5_lookup.py)."""
     from torch.utils.data import ConcatDataset
+    from era5_lookup import resolve_era5_path
     parts = []
     for spec in specs:
         r, roi_dir, roi = resolve_roi_spec(root, spec)
@@ -129,10 +143,13 @@ def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed, ma
         if max_patches_per_roi is not None:
             n = min(n, max_patches_per_roi)
         s1_root = resolve_s1_root(r) if use_s1 else None
+        era5_path = resolve_era5_path(spec, era5_root) if era5_root else None
         ds = SEN12MSCRTSPatchDataset(root=r, roi_dir=roi_dir, roi=roi, patch_indices=range(n),
                                       img_size=img_size, target_mode=target_mode,
-                                      target_max_cloud=target_max_cloud, seed=seed, s1_root=s1_root)
-        print(f"  {spec}: {n} патчів" + (" (+S1)" if use_s1 else ""))
+                                      target_max_cloud=target_max_cloud, seed=seed, s1_root=s1_root,
+                                      era5_path=era5_path)
+        tags = ("+S1" if use_s1 else "") + ("+ERA5" if era5_root else "")
+        print(f"  {spec}: {n} патчів" + (f" ({tags})" if tags else ""))
         parts.append(ds)
     return ConcatDataset(parts) if len(parts) > 1 else parts[0]
 
@@ -196,6 +213,9 @@ def main():
     ap.add_argument("--phen-asym-ratio", type=float, default=5.0,
                      help="у скільки разів сильніше штрафується перевищення верхньої межі "
                           "(неправдоподібне позеленіння), ніж падіння нижче нижньої (стрес)")
+    ap.add_argument("--era5-root", default=None,
+                     help="директорія з <регіон>_<roi>.nc від fetch_era5.py - вмикає GDD-"
+                          "масштабування фенологічного штрафу замість днів")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_prototype")
     ap.add_argument("--n-boot", type=int, default=2000)
@@ -212,13 +232,13 @@ def main():
     print("Train ROI:")
     train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode,
                               args.target_max_cloud, args.seed, args.max_train_patches_per_roi,
-                              use_s1=args.use_s1)
+                              use_s1=args.use_s1, era5_root=args.era5_root)
     print("Val ROI (лише для вибору епохи, інша локація):")
     val_ds = build_dataset(args.root, args.val_roi, args.img_size, args.target_mode,
-                            args.target_max_cloud, args.seed, use_s1=args.use_s1)
+                            args.target_max_cloud, args.seed, use_s1=args.use_s1, era5_root=args.era5_root)
     print("Test ROI (лише для фінального звіту, ще інша локація):")
     test_ds = build_dataset(args.root, args.test_roi, args.img_size, args.target_mode,
-                             args.target_max_cloud, args.seed, use_s1=args.use_s1)
+                             args.target_max_cloud, args.seed, use_s1=args.use_s1, era5_root=args.era5_root)
     print(f"Разом: train={len(train_ds)}, val={len(val_ds)}, test={len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
@@ -227,7 +247,7 @@ def main():
 
     rate_lo = rate_hi = None
     if args.phen_weight > 0:
-        rate_lo, rate_hi = compute_ndvi_rate_bounds(args.root, args.train_roi)
+        rate_lo, rate_hi = compute_ndvi_rate_bounds(args.root, args.train_roi, era5_root=args.era5_root)
 
     model = ResidualUNet(in_ch=n_input_channels(include_s1=args.use_s1), out_ch=n_bands()).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -236,10 +256,11 @@ def main():
     def phenological_penalty(pred, y_ref, ref_days):
         """Δ NDVI (модель - y_ref) за межами емпіричної смуги правдоподібності, масштабованої
         на РЕАЛЬНИЙ проміжок y_ref->ціль (ref_days - з Dataset, НЕ плутати з каналом day_gap
-        у x, який кодує near->ціль, інший інтервал). Перевищення верхньої межі (неправдоподібне
-        позеленіння) карається w_up разів сильніше за падіння нижче нижньої (правдоподібний
-        стрес) - асиметрія з концепції Методу 1."""
-        gap = ref_days.to(pred.device).clamp(min=1.0).view(-1, 1, 1)  # (B,1,1), мін. 1 день
+        у x, який кодує near->ціль, інший інтервал; одиниці - дні або GDD, залежно від
+        --era5-root, мають бути узгоджені з rate_lo/rate_hi з compute_ndvi_rate_bounds). Перевищення
+        верхньої межі (неправдоподібне позеленіння) карається w_up разів сильніше за падіння
+        нижче нижньої (правдоподібний стрес) - асиметрія з концепції Методу 1."""
+        gap = ref_days.to(pred.device).clamp(min=1.0).view(-1, 1, 1)  # (B,1,1), мін. 1 одиниця (день/GDD)
         # pred тут НЕ clamp-нутий (на відміну від evaluate()) - на старті тренування
         # необмежена модель може дати відбиття поза [0,1] чи близько нуля в обох каналах,
         # що робить ділення NDVI нестабільним (вибух градієнта). Для самого штрафу
@@ -317,7 +338,7 @@ def main():
         "# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref",
         "",
         f"Вхід включає Sentinel-1 (VV/VH): {'так' if args.use_s1 else 'ні'}.",
-        f"Фенологічний член втрат: {'так, вага ' + str(args.phen_weight) + f', межі [{rate_lo:.4f},{rate_hi:.4f}] NDVI/день, асиметрія x' + str(args.phen_asym_ratio) if args.phen_weight > 0 else 'ні'}.",
+        f"Фенологічний член втрат: {'так, вага ' + str(args.phen_weight) + f', межі [{rate_lo:.4f},{rate_hi:.4f}] NDVI/' + ('GDD' if args.era5_root else 'день') + ', асиметрія x' + str(args.phen_asym_ratio) if args.phen_weight > 0 else 'ні'}.",
         f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів).",
         f"Val ROI (вибір епохи): {', '.join(args.val_roi)} ({len(val_ds)} патчів).",
         f"Test ROI (фінальний звіт, НЕ бачений при виборі епохи): {', '.join(args.test_roi)} ({len(test_ds)} патчів).",

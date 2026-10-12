@@ -9,12 +9,15 @@
         --year 2018 --out data/era5
 """
 import argparse
+import zipfile
 from pathlib import Path
 
 import cdsapi
 
 
 def fetch(name, south, west, north, east, year, out_dir, pad=0.15):
+    """Зберігає розпакований .nc у out_dir/<name>.nc. CDS віддає ZIP (попри розширення
+    .nc у запиті) - розпаковуємо і перейменовуємо єдиний data_0.nc усередині."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{name}.nc"
@@ -25,6 +28,7 @@ def fetch(name, south, west, north, east, year, out_dir, pad=0.15):
     c = cdsapi.Client()
     area = [north + pad, west - pad, south - pad, east + pad]  # [N, W, S, E]
     print(f"{name}: запит до CDS, area={area}, рік={year} ...")
+    zip_path = out_dir / f"{name}_raw.zip"
     c.retrieve(
         "reanalysis-era5-land",
         {
@@ -36,8 +40,14 @@ def fetch(name, south, west, north, east, year, out_dir, pad=0.15):
             "area": area,
             "format": "netcdf",
         },
-        str(out_path),
+        str(zip_path),
     )
+    with zipfile.ZipFile(zip_path) as zf:
+        members = zf.namelist()
+        assert len(members) == 1, f"очікував 1 файл у архіві, отримав {members}"
+        with zf.open(members[0]) as src, open(out_path, "wb") as dst:
+            dst.write(src.read())
+    zip_path.unlink()
     print(f"{name}: збережено -> {out_path}")
 
 
