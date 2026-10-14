@@ -216,6 +216,15 @@ def main():
     ap.add_argument("--era5-root", default=None,
                      help="директорія з <регіон>_<roi>.nc від fetch_era5.py - вмикає GDD-"
                           "масштабування фенологічного штрафу замість днів")
+    ap.add_argument("--phen-ramp-epochs", type=int, default=0,
+                     help="якщо >0, вага фенологічного штрафу лінійно зростає від 0 до "
+                          "--phen-weight за перші N епох (замість повної ваги з 1-ї епохи) - "
+                          "щоб не заважати ранній стабілізації L1 на старті тренування")
+    ap.add_argument("--phen-threshold-roi", action="append", default=None,
+                     help="ROI (можна кілька разів) для оцінки порогів швидкості NDVI "
+                          "(compute_ndvi_rate_bounds) ОКРЕМО від --train-roi - ширший набір "
+                          "дає стійкіші пороги; якщо не задано, використовується --train-roi "
+                          "(попередня поведінка)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_prototype")
     ap.add_argument("--n-boot", type=int, default=2000)
@@ -247,7 +256,8 @@ def main():
 
     rate_lo = rate_hi = None
     if args.phen_weight > 0:
-        rate_lo, rate_hi = compute_ndvi_rate_bounds(args.root, args.train_roi, era5_root=args.era5_root)
+        threshold_specs = args.phen_threshold_roi if args.phen_threshold_roi else args.train_roi
+        rate_lo, rate_hi = compute_ndvi_rate_bounds(args.root, threshold_specs, era5_root=args.era5_root)
 
     model = ResidualUNet(in_ch=n_input_channels(include_s1=args.use_s1), out_ch=n_bands()).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -277,6 +287,11 @@ def main():
     best_val, best_epoch, best_state = float("inf"), None, None
 
     for epoch in range(1, args.epochs + 1):
+        if args.phen_ramp_epochs > 0:
+            epoch_phen_weight = args.phen_weight * min(1.0, epoch / args.phen_ramp_epochs)
+        else:
+            epoch_phen_weight = args.phen_weight
+
         model.train()
         train_losses = []
         for x, y_ref, target, _, ref_days in train_loader:
@@ -284,8 +299,8 @@ def main():
             delta = model(x)
             pred = y_ref + delta
             loss = criterion(pred, target)
-            if args.phen_weight > 0:
-                loss = loss + args.phen_weight * phenological_penalty(pred, y_ref, ref_days)
+            if epoch_phen_weight > 0:
+                loss = loss + epoch_phen_weight * phenological_penalty(pred, y_ref, ref_days)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -338,7 +353,7 @@ def main():
         "# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref",
         "",
         f"Вхід включає Sentinel-1 (VV/VH): {'так' if args.use_s1 else 'ні'}.",
-        f"Фенологічний член втрат: {'так, вага ' + str(args.phen_weight) + f', межі [{rate_lo:.4f},{rate_hi:.4f}] NDVI/' + ('GDD' if args.era5_root else 'день') + ', асиметрія x' + str(args.phen_asym_ratio) if args.phen_weight > 0 else 'ні'}.",
+        f"Фенологічний член втрат: {'так, вага ' + str(args.phen_weight) + f', межі [{rate_lo:.4f},{rate_hi:.4f}] NDVI/' + ('GDD' if args.era5_root else 'день') + ', асиметрія x' + str(args.phen_asym_ratio) + (f', лінійний розігрів ваги за {args.phen_ramp_epochs} епох' if args.phen_ramp_epochs > 0 else '') + (f', пороги оцінено з {len(args.phen_threshold_roi)} окремих threshold-ROI' if args.phen_threshold_roi else '') if args.phen_weight > 0 else 'ні'}.",
         f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів).",
         f"Val ROI (вибір епохи): {', '.join(args.val_roi)} ({len(val_ds)} патчів).",
         f"Test ROI (фінальний звіт, НЕ бачений при виборі епохи): {', '.join(args.test_roi)} ({len(test_ds)} патчів).",

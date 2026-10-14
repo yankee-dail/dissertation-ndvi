@@ -189,6 +189,21 @@ class SEN12MSCRTSPatchDataset(Dataset):
         return (torch.from_numpy(x), torch.from_numpy(y_ref), torch.from_numpy(target),
                 torch.from_numpy(target_cloud), torch.tensor(ref_target_scale))
 
+    def provenance(self, i):
+        """Метадані походження для інформаційної моделі (§11 REPORT.md) - НЕ впливає на
+        __getitem__/тренування, лише для трасування "виміряне -> відновлене" поза
+        тензорами. Повертає файли й дати ref/target кадрів, обраних для цього патча."""
+        pdx = self.patch_indices[i]
+        pick = self._picks[pdx]
+        ref_idx, target_idx = pick["ref_idx"], pick["target_idx"]
+        return {
+            "roi": f"{self.roi_dir}/{self.roi}", "patch_idx": pdx,
+            "ref_file": self.series[ref_idx][pdx].name,
+            "ref_date": str(self._day_to_date(pick["t_days"][ref_idx])),
+            "target_file": self.series[target_idx][pdx].name,
+            "target_date": str(self._day_to_date(pick["t_days"][target_idx])),
+        }
+
     @staticmethod
     def _day_to_date(t_day):
         from datetime import datetime, timedelta

@@ -1,0 +1,43 @@
+/Users/sbaluk/dissertation-ndvi/.venv312/lib/python3.12/site-packages/skimage/metrics/_structural_similarity.py:4: UserWarning: A NumPy version >=2.0.0 and <2.8.0 is required for this version of SciPy (detected version 1.26.4)
+  from scipy.ndimage import uniform_filter
+Пристрій: cpu
+Train ROI:
+  s2_america_test/ROIs1158/106: 238 патчів
+  s2_africa_test/ROIs2017/32: 238 патчів
+  s2_africa_test/ROIs2017/140: 270 патчів
+  s2_asiaEast_test/ROIs1868/73: 240 патчів
+Val ROI (лише для вибору епохи, інша локація):
+  s2_asiaEast_test/ROIs1868/119: 300 патчів
+Test ROI (лише для фінального звіту, ще інша локація):
+  s2_america_test/ROIs1970/132: 270 патчів
+Разом: train=986, val=300, test=270
+Пороги динаміки NDVI (з 4254 пар чистих спостережень train ROI): [-0.0127, 0.0132] NDVI/день (p5/p95)
+epoch 1/5  train_L1=0.0631  val_L1=0.0483  baseline_yref_L1=0.0470  (найкращий дотепер)
+epoch 2/5  train_L1=0.0485  val_L1=0.0602  baseline_yref_L1=0.0470
+epoch 3/5  train_L1=0.0471  val_L1=0.0461  baseline_yref_L1=0.0470  (найкращий дотепер)
+epoch 4/5  train_L1=0.0449  val_L1=0.0497  baseline_yref_L1=0.0470
+epoch 5/5  train_L1=0.0444  val_L1=0.0493  baseline_yref_L1=0.0470
+
+Найкраща епоха за val_L1: 3 (val_L1=0.0461) - саме цей чекпоінт оцінюється й зберігається.
+
+# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref
+
+Вхід включає Sentinel-1 (VV/VH): ні.
+Фенологічний член втрат: так, вага 0.1, межі [-0.0127,0.0132] NDVI/день, асиметрія x5.0.
+Train ROI: s2_america_test/ROIs1158/106, s2_africa_test/ROIs2017/32, s2_africa_test/ROIs2017/140, s2_asiaEast_test/ROIs1868/73 (986 патчів).
+Val ROI (вибір епохи): s2_asiaEast_test/ROIs1868/119 (300 патчів).
+Test ROI (фінальний звіт, НЕ бачений при виборі епохи): s2_america_test/ROIs1970/132 (270 патчів).
+Епох: 5, розмір зображення (даунсемпл): 128x128. Найкраща епоха за val_L1: 3.
+RMSE/MAE/SAM рахувались лише по пікселях цілі з хмарністю < 0.2 (4211533/4423680 = 95.2% пікселів test-набору; SSIM - без маски). Лосс тренування й вибору епохи - НЕ маскований (повний target).
+
+- Модель (y_ref + Δθ):  RMSE 0.0543±0.0275  MAE 0.0425±0.0248  SSIM 0.4965±0.2096  SAM 10.71±4.60°
+- Базовий рівень (y_ref): RMSE 0.0563±0.0297  MAE 0.0433±0.0266  SSIM 0.5078±0.2178  SAM 11.01±5.18°
+
+Δ RMSE (модель - базовий) = -0.0020 [-0.0029, -0.0011] - значуще краще
+Δ SAM  (модель - базовий) = -0.30° [-0.47, -0.14] - значуще краще
+
+Критерій кроку 2 (статистично значуще не гірше за базовий метод за RMSE І SAM) ВИКОНАНО на цьому прототипі.
+
+Це прототип на 4 train-, 1 val- і 1 test-ROI, 1 запуск (не >=5 із різними seed) - недостатньо для дисертаційного висновку. CI тут відображає лише розкид між тестовими патчами в межах цього одного навченого запуску, НЕ розкид між повторними тренуваннями.
+
+Збережено: results/phen_grid/w0.1_a5.0/report.md, results/phen_grid/w0.1_a5.0/model.pt
