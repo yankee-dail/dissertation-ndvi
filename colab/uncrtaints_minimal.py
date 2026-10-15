@@ -18,13 +18,23 @@ ROIs1970/132, той самий test ROI, що й у results/step2_final/uncerta
 import os
 import subprocess
 import sys
+import time
 
 
-def run(cmd, cwd=None, check=True):
-    print(f"$ {cmd}")
-    result = subprocess.run(cmd, shell=True, cwd=cwd)
-    if check and result.returncode != 0:
-        sys.exit(f"Команда впала (код {result.returncode}): {cmd}")
+def run(cmd, cwd=None, check=True, retries=1):
+    """retries>1 - для мережевих команд (curl по FTP зрідка падає на транзієнтних
+    збоях з'єднання, напр. errno 115 - це не означає, що сервер недоступний,
+    повторна спроба зазвичай проходить)."""
+    for attempt in range(1, retries + 1):
+        print(f"$ {cmd}" + (f"  (спроба {attempt}/{retries})" if retries > 1 else ""))
+        result = subprocess.run(cmd, shell=True, cwd=cwd)
+        if result.returncode == 0:
+            return 0
+        if attempt < retries:
+            print(f"  -> код {result.returncode}, чекаю 10с і пробую ще раз")
+            time.sleep(10)
+    if check:
+        sys.exit(f"Команда впала (код {result.returncode}) після {retries} спроб(и): {cmd}")
     return result.returncode
 
 
@@ -40,33 +50,48 @@ def main():
         sys.exit("GITHUB_TOKEN відсутній у середовищі - встанови його в клітинці ноутбука "
                  "(os.environ['GITHUB_TOKEN'] = userdata.get('GITHUB_TOKEN')) перед запуском цього скрипта")
 
-    # === 2. Клонування основного репозиторію ===
-    run(f"git clone https://{token}@github.com/yankee-dail/dissertation-ndvi.git /content/dissertation-ndvi")
+    # === 2. Клонування основного репозиторію (ідемпотентно - повторний запуск після
+    # збою пізнішого кроку не повинен падати на "destination already exists") ===
+    if not os.path.isdir("/content/dissertation-ndvi/.git"):
+        run(f"git clone https://{token}@github.com/yankee-dail/dissertation-ndvi.git /content/dissertation-ndvi")
+    else:
+        print("dissertation-ndvi вже клоновано - пропускаю")
 
     import torch
     print(f"CUDA доступна: {torch.cuda.is_available()}, torch={torch.__version__}")
 
-    # === 3. Завантаження S2+S1 ЛИШЕ для america (не africa/asiaEast - економія ~100 ГБ) ===
+    # === 3. Завантаження S2+S1 ЛИШЕ для america (не africa/asiaEast - економія ~100 ГБ).
+    # Ідемпотентно - якщо дані вже розпаковані (ROI-директорія існує), пропускаємо. ===
     raw_dir = "/content/dissertation-ndvi/data/raw"
     os.makedirs(raw_dir, exist_ok=True)
-    run('curl --fail --show-error -o s2_america_test.tar.gz '
-        '"ftp://m1659251:m1659251@dataserv.ub.tum.de/s2_america_test.tar.gz"', cwd=raw_dir)
-    run('curl --fail --show-error -o s1_america_test.tar.gz '
-        '"ftp://m1659251:m1659251@dataserv.ub.tum.de/s1_america_test.tar.gz"', cwd=raw_dir)
 
-    run('echo "19c7a11d81c1a574f5876ec8e21dfec7f101677704021a6191146e59625670419e8606aa1efb5a9f39c74700a4830875f87025ce4b8a9de9e6fcbf35d233276f  '
-        's2_america_test.tar.gz" | shasum -a 512 -c -', cwd=raw_dir)
-    run('echo "416d3d94c6b0f8a7b5c729ed754aa5a52e4dc662ac64b779c57956d31b5cd91ceee6dc3dcde6d08531e949ab9bb25a810be807e14d0cc7a2675dcbc12abf7a12  '
-        's1_america_test.tar.gz" | shasum -a 512 -c -', cwd=raw_dir)
+    if not os.path.isdir(os.path.join(raw_dir, "s2_america_test")):
+        run('curl --fail --show-error -o s2_america_test.tar.gz '
+            '"ftp://m1659251:m1659251@dataserv.ub.tum.de/s2_america_test.tar.gz"', cwd=raw_dir, retries=3)
+        run('echo "19c7a11d81c1a574f5876ec8e21dfec7f101677704021a6191146e59625670419e8606aa1efb5a9f39c74700a4830875f87025ce4b8a9de9e6fcbf35d233276f  '
+            's2_america_test.tar.gz" | shasum -a 512 -c -', cwd=raw_dir)
+        run("tar -xzf s2_america_test.tar.gz && rm s2_america_test.tar.gz", cwd=raw_dir)
+    else:
+        print("s2_america_test вже розпаковано - пропускаю")
 
-    run("tar -xzf s2_america_test.tar.gz && rm s2_america_test.tar.gz", cwd=raw_dir)
-    run("tar -xzf s1_america_test.tar.gz && rm s1_america_test.tar.gz", cwd=raw_dir)
+    if not os.path.isdir(os.path.join(raw_dir, "s1_america_test")):
+        run('curl --fail --show-error -o s1_america_test.tar.gz '
+            '"ftp://m1659251:m1659251@dataserv.ub.tum.de/s1_america_test.tar.gz"', cwd=raw_dir, retries=3)
+        run('echo "416d3d94c6b0f8a7b5c729ed754aa5a52e4dc662ac64b779c57956d31b5cd91ceee6dc3dcde6d08531e949ab9bb25a810be807e14d0cc7a2675dcbc12abf7a12  '
+            's1_america_test.tar.gz" | shasum -a 512 -c -', cwd=raw_dir)
+        run("tar -xzf s1_america_test.tar.gz && rm s1_america_test.tar.gz", cwd=raw_dir)
+    else:
+        print("s1_america_test вже розпаковано - пропускаю")
+
     run("df -h /content")
 
     # === 4. Клон UnCRtainTS + залежності (той самий фікс, що й у головному ноутбуці:
     # НЕ --no-deps для основного списку - torch/torchvision вже виключені з нього) ===
-    run("git clone --depth 1 https://github.com/PatrickTUM/UnCRtainTS.git /content/UnCRtainTS")
     uncrt_dir = "/content/UnCRtainTS"
+    if not os.path.isdir(os.path.join(uncrt_dir, ".git")):
+        run(f"git clone --depth 1 https://github.com/PatrickTUM/UnCRtainTS.git {uncrt_dir}")
+    else:
+        print("UnCRtainTS вже клоновано - пропускаю")
 
     print(f"ДО встановлення залежностей: CUDA доступна={torch.cuda.is_available()}")
     run("sed -E 's/[~=<>!].*$//' requirements.txt | "
