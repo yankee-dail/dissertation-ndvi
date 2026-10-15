@@ -29,9 +29,16 @@ def run(cmd, cwd=None, check=True):
 
 
 def main():
-    # === 1. GITHUB_TOKEN з Colab Secrets ===
-    from google.colab import userdata
-    token = userdata.get("GITHUB_TOKEN")
+    # === 1. GITHUB_TOKEN ===
+    # google.colab.userdata.get() вимагає живого IPython-ядра (комунікує з ним через
+    # get_ipython()) - у ПІДПРОЦЕСІ (`!python script.py`) ядра немає, тому виклик падає
+    # з AttributeError. Тому токен отримуємо тут із змінної середовища, яку потрібно
+    # встановити В САМІЙ клітинці ноутбука (де userdata.get() ще працює) ПЕРЕД запуском
+    # цього скрипта: os.environ["GITHUB_TOKEN"] = userdata.get("GITHUB_TOKEN")
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        sys.exit("GITHUB_TOKEN відсутній у середовищі - встанови його в клітинці ноутбука "
+                 "(os.environ['GITHUB_TOKEN'] = userdata.get('GITHUB_TOKEN')) перед запуском цього скрипта")
 
     # === 2. Клонування основного репозиторію ===
     run(f"git clone https://{token}@github.com/yankee-dail/dissertation-ndvi.git /content/dissertation-ndvi")
