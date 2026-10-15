@@ -32,7 +32,7 @@ def run(cmd, cwd=None, check=True, retries=1):
             return 0
         if attempt < retries:
             print(f"  -> код {result.returncode}, чекаю 10с і пробую ще раз")
-            time.sleep(10)
+            time.sleep(20)
     if check:
         sys.exit(f"Команда впала (код {result.returncode}) після {retries} спроб(и): {cmd}")
     return result.returncode
@@ -67,7 +67,7 @@ def main():
 
     if not os.path.isdir(os.path.join(raw_dir, "s2_america_test")):
         run('curl --fail --show-error -o s2_america_test.tar.gz '
-            '"ftp://m1659251:m1659251@dataserv.ub.tum.de/s2_america_test.tar.gz"', cwd=raw_dir, retries=3)
+            '"ftp://m1659251:m1659251@dataserv.ub.tum.de/s2_america_test.tar.gz"', cwd=raw_dir, retries=6)
         run('echo "19c7a11d81c1a574f5876ec8e21dfec7f101677704021a6191146e59625670419e8606aa1efb5a9f39c74700a4830875f87025ce4b8a9de9e6fcbf35d233276f  '
             's2_america_test.tar.gz" | shasum -a 512 -c -', cwd=raw_dir)
         run("tar -xzf s2_america_test.tar.gz && rm s2_america_test.tar.gz", cwd=raw_dir)
@@ -76,7 +76,7 @@ def main():
 
     if not os.path.isdir(os.path.join(raw_dir, "s1_america_test")):
         run('curl --fail --show-error -o s1_america_test.tar.gz '
-            '"ftp://m1659251:m1659251@dataserv.ub.tum.de/s1_america_test.tar.gz"', cwd=raw_dir, retries=3)
+            '"ftp://m1659251:m1659251@dataserv.ub.tum.de/s1_america_test.tar.gz"', cwd=raw_dir, retries=6)
         run('echo "416d3d94c6b0f8a7b5c729ed754aa5a52e4dc662ac64b779c57956d31b5cd91ceee6dc3dcde6d08531e949ab9bb25a810be807e14d0cc7a2675dcbc12abf7a12  '
             's1_america_test.tar.gz" | shasum -a 512 -c -', cwd=raw_dir)
         run("tar -xzf s1_america_test.tar.gz && rm s1_america_test.tar.gz", cwd=raw_dir)
