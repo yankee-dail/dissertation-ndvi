@@ -163,6 +163,16 @@ def main():
         cwd=f"{uncrt_dir}/model",
     )
 
+    # === 8. Коміт результатів назад у репозиторій (попередній прогін дійшов до 99%, але
+    # результат так і не був збережений - ефемерний диск Colab, нічого не закомічено) ===
+    repo_dir = "/content/dissertation-ndvi"
+    run("git checkout -b uncrtaints-results 2>/dev/null || git checkout uncrtaints-results", cwd=repo_dir)
+    run("git add -f results/uncrtaints_inference", cwd=repo_dir)
+    run('git -c user.email="colab@example.com" -c user.name="Colab run" '
+        'commit -m "UnCRtainTS inference results (noSAR_1, america ROI)" || echo "нічого нового закомітити"',
+        cwd=repo_dir)
+    run(f"git push -u https://{token}@github.com/yankee-dail/dissertation-ndvi.git uncrtaints-results", cwd=repo_dir)
+
 
 if __name__ == "__main__":
     main()
