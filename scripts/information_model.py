@@ -31,8 +31,8 @@
     (ту саму, що й у §8.2, compute_ndvi_rate_bounds) -> "review_dynamics"
     (неправдоподібна динаміка - можливий артефакт реконструкції АБО реальний
     агрономічний стрес/стрибок, модель лише флагує, не вирішує)
-  - інакше, якщо ширина конформного інтервалу перевищує медіану по test-набору
-    більш ніж у 1.5 рази -> "low_confidence" (модель сама невпевнена)
+  - інакше, якщо ширина конформного інтервалу перевищує поріг --low-conf-cut
+    (p90 ширин на КАЛІБРУВАЛЬНОМУ ROI) -> "low_confidence" (модель сама невпевнена)
   - інакше -> "trust"
 
 Це прототип на 1 test ROI (та сама методологічна слабкість, що й у §4: калібрування
@@ -45,7 +45,7 @@
         --train-roi s2_america_test/ROIs1158/106 --train-roi s2_africa_test/ROIs2017/32 \
         --train-roi s2_africa_test/ROIs2017/140 --train-roi s2_asiaEast_test/ROIs1868/73 \
         --step2-model results/step2_final/model.pt \
-        --uncertainty-model results/uncertainty_final/model.pt --q 1.207 \
+        --uncertainty-model results/uncertainty_final/model.pt --q 1.238 --low-conf-cut 0.2502 \
         --out results/information_model
 """
 import argparse
@@ -75,9 +75,12 @@ def main():
                      help="МАЄ збігатись із seed, яким навчено --step2-model/--uncertainty-model")
     ap.add_argument("--step2-model", required=True)
     ap.add_argument("--uncertainty-model", required=True)
-    ap.add_argument("--q", type=float, required=True, help="конформний множник з report.md моделі невизначеності")
-    ap.add_argument("--low-conf-percentile", type=float, default=90.0,
-                     help="патчі з шириною інтервалу вище цього перцентиля (на test ROI) -> low_confidence")
+    ap.add_argument("--q", type=float, required=True,
+                     help="конформний множник для пари (μ кроку 2, σ методу 2): q_l1_pair з "
+                          "results/validation_extras/*/summary.json, НЕ q з report.md σ-моделі")
+    ap.add_argument("--low-conf-cut", type=float, required=True,
+                     help="поріг ширини інтервалу на патч, визначений на КАЛІБРУВАЛЬНОМУ ROI "
+                          "(low_conf_cut_from_calib з validation_extras), не на тесті")
     ap.add_argument("--out", default="results/information_model")
     args = ap.parse_args()
 
@@ -113,10 +116,12 @@ def main():
             gap = ref_target_scale.to(device).clamp(min=1.0).view(-1, 1, 1)
 
             recon = (y_ref + step2(x)).clamp(0, 1)
-            delta, log_sigma = unc(x)
-            mu = (y_ref + delta).clamp(0, 1)
+            _, log_sigma = unc(x)
             sigma = torch.exp(log_sigma)
-            lo, hi = (mu - args.q * sigma).clamp(0, 1), (mu + args.q * sigma).clamp(0, 1)
+            # Інтервал центровано на значенні, яке видається користувачу (recon), а q
+            # відкалібровано саме для score |y - recon| / σ - інакше гарантія (2.18) не
+            # стосується відновленого значення.
+            lo, hi = (recon - args.q * sigma).clamp(0, 1), (recon + args.q * sigma).clamp(0, 1)
             width = float((hi - lo).mean().item())
             widths.append(width)
 
@@ -139,7 +144,7 @@ def main():
                 "_sanity_vs_target": sanity,  # ЛИШЕ для перевірки прототипу - у проді target невідомий
             })
 
-    width_cutoff = float(np.percentile(widths, args.low_conf_percentile))
+    width_cutoff = args.low_conf_cut
     for r in records:
         if not r["_dynamics_ok"]:
             flag, reason = "review_dynamics", (
@@ -148,7 +153,7 @@ def main():
         elif r["entity:confidence"]["interval_width"] > width_cutoff:
             flag, reason = "low_confidence", (
                 f"ширина інтервалу {r['entity:confidence']['interval_width']:.4f} > "
-                f"p{args.low_conf_percentile:.0f} ({width_cutoff:.4f}) - модель сама невпевнена")
+                f"поріг з калібрувального ROI ({width_cutoff:.4f}) - модель сама невпевнена")
         else:
             flag, reason = "trust", "динаміка в межах очікуваного, впевненість достатня"
         r["entity:recommendation"] = {"flag": flag, "reason": reason}
@@ -176,9 +181,8 @@ def main():
         "",
         f"Test ROI: {', '.join(args.test_roi)} ({len(records)} патчів). "
         f"Фенологічна смуга правдоподібності (з train ROI, день-масштаб): [{rate_lo:.4f},{rate_hi:.4f}] NDVI/день.",
-        f"Конформний множник q = {args.q} (з results/uncertainty_final). "
-        f"Поріг low_confidence = ширина інтервалу > p{args.low_conf_percentile:.0f} "
-        f"({width_cutoff:.4f}) розподілу на цьому test ROI.",
+        f"Конформний множник q = {args.q} (пара μ кроку 2 + σ методу 2, калібрувальний ROI). "
+        f"Поріг low_confidence = ширина інтервалу > {width_cutoff:.4f} (p90 на калібрувальному ROI).",
         "",
         "## Розподіл рекомендацій",
         "",

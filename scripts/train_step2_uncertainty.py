@@ -121,6 +121,8 @@ def main():
     ap.add_argument("--target-mode", default="random_clean", choices=["argmin", "random_clean"])
     ap.add_argument("--target-max-cloud", type=float, default=0.3)
     ap.add_argument("--coverage", type=float, default=0.9, help="номінальний рівень покриття інтервалу")
+    ap.add_argument("--ref-mode", default="prior_clean", choices=["prior_clean", "linear_interp"])
+    ap.add_argument("--ref-cache-dir", default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_uncertainty")
     args = ap.parse_args()
@@ -134,11 +136,14 @@ def main():
     print(f"Пристрій: {device}")
 
     print("Train ROI:")
-    train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed)
+    train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed,
+                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir)
     print("Calib ROI (для підбору q, окрема локація):")
-    calib_ds = build_dataset(args.root, args.calib_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed)
+    calib_ds = build_dataset(args.root, args.calib_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed,
+                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir)
     print("Test ROI (для звіту про покриття, окрема локація):")
-    test_ds = build_dataset(args.root, args.test_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed)
+    test_ds = build_dataset(args.root, args.test_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed,
+                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir)
     print(f"Разом: train={len(train_ds)}, calib={len(calib_ds)}, test={len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
@@ -185,7 +190,9 @@ def main():
 
     # Конформне калібрування: q = емпіричний (1-alpha)-квантиль нонконформних оцінок на calib-наборі.
     scores = nonconformity_scores(model, calib_loader, device)
-    q = float(np.quantile(scores, args.coverage))
+    n = len(scores)
+    level = min(1.0, np.ceil((n + 1) * args.coverage) / n)  # формула (2.17)
+    q = float(np.quantile(scores, level, method="higher"))
     print(f"\nКонформний множник q (рівень {args.coverage:.0%}): {q:.3f} (з {len(scores)} піксель-каналів calib-набору)")
 
     test_results, test_coverage, test_width, n_clear, n_px = evaluate_with_intervals(model, test_loader, device, q)

@@ -26,7 +26,10 @@ import rasterio
 import torch
 from torch.utils.data import Dataset
 
+from eval_protocol import CLEAN_PIXEL_THRESH, TOL_SAME_DAYS
+
 REFL_MAX = 10000.0
+REF_MODES = ("prior_clean", "linear_interp")
 S1_DB_MIN, S1_DB_MAX = -25.0, 0.0  # діапазон з офіційного process_SAR (dataLoader.py)
 
 
@@ -52,6 +55,34 @@ def simple_cloud_prob(img):
     return np.clip((bright - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
 
 
+def linear_interp_ref(frames, clouds, t_days, target_idx, clean_thresh=CLEAN_PIXEL_THRESH):
+    """Попіксельна лінійна інтерполяція в часі між найближчими ЧИСТИМИ пікселями до і після цілі.
+
+    frames: (T, C, H, W), clouds: (T, H, W), t_days: (T,). Цільовий кадр і кадри того самого
+    дня (±TOL_SAME_DAYS) виключено. Якщо чистий піксель є лише з одного боку - береться він,
+    якщо ніде - середнє за рядом (як eval_protocol.linear_interp, але векторизовано)."""
+    rel = (t_days - t_days[target_idx]).astype(np.float64)
+    keep = np.abs(rel) > TOL_SAME_DAYS
+    keep[target_idx] = False
+    f, c, d = frames[keep], clouds[keep], rel[keep]
+    order = np.argsort(d)
+    f, c, d = f[order], c[order], d[order]
+    T, C, H, W = f.shape
+    clean = (c < clean_thresh).reshape(T, -1)
+    ff = f.reshape(T, C, -1)
+    ar = np.arange(T)[:, None]
+    ib = np.where(clean & (d[:, None] < 0), ar, -1).max(0)
+    ia = np.where(clean & (d[:, None] > 0), ar, T).min(0)
+    hb, ha = ib >= 0, ia < T
+    p = np.arange(ff.shape[2])
+    vb = ff[np.clip(ib, 0, T - 1), :, p].T
+    va = ff[np.clip(ia, 0, T - 1), :, p].T
+    db, da = d[np.clip(ib, 0, T - 1)], d[np.clip(ia, 0, T - 1)]
+    w = np.where(hb & ha, -db / np.where(da - db == 0, 1, da - db), 0.0)
+    out = np.where(hb & ha, vb + w * (va - vb), np.where(hb, vb, np.where(ha, va, ff.mean(0))))
+    return out.reshape(C, H, W).astype(np.float32)
+
+
 def pick_target_idx(frac, rng, max_cloud, mode="random_clean"):
     if mode == "argmin":
         return int(np.argmin(frac))
@@ -64,7 +95,7 @@ def pick_target_idx(frac, rng, max_cloud, mode="random_clean"):
 class SEN12MSCRTSPatchDataset(Dataset):
     def __init__(self, root, roi_dir, roi, patch_indices, n_time_points=30,
                  target_mode="random_clean", target_max_cloud=0.3, seed=0, img_size=None,
-                 s1_root=None, era5_path=None):
+                 s1_root=None, era5_path=None, ref_mode="prior_clean", ref_cache_dir=None):
         """s1_root: директорія з тією самою структурою <roi_dir>/<roi>/S1/<tdx>/*.tif -
         якщо задано, до x додається VV/VH (ref і near кадри, 2x2=4 канали). S1 НІКОЛИ не
         йде в ціль - лише як додатковий вхід (радар не замінює оптичну ground truth).
@@ -80,6 +111,12 @@ class SEN12MSCRTSPatchDataset(Dataset):
         self.seed = seed
         self.img_size = img_size
         self.s1_root = Path(s1_root) if s1_root is not None else None
+        if ref_mode not in REF_MODES:
+            raise ValueError(f"ref_mode має бути одним із {REF_MODES}")
+        self.ref_mode = ref_mode
+        self.ref_cache_dir = Path(ref_cache_dir) if ref_cache_dir is not None else None
+        if self.ref_cache_dir is not None:
+            self.ref_cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.era5 = None
         if era5_path is not None:
@@ -144,16 +181,42 @@ class SEN12MSCRTSPatchDataset(Dataset):
         step_h, step_w = h // self.img_size, w // self.img_size
         return arr[:, ::step_h, ::step_w][:, : self.img_size, : self.img_size]
 
+    def full_series(self, i):
+        """Увесь 30-кадровий ряд фрагмента: (T, C, H, W) відбиття [0,1] і (T, H, W) хмарність."""
+        pdx = self.patch_indices[i]
+        frames, clouds = [], []
+        for t in range(self.n_t):
+            raw = read_tif(self.series[t][pdx])
+            frames.append(self._maybe_resize((np.clip(raw, 0, REFL_MAX) / REFL_MAX).astype(np.float32)))
+            clouds.append(self._maybe_resize(simple_cloud_prob(raw)[None])[0])
+        return np.stack(frames), np.stack(clouds)
+
+    def _interp_ref(self, i, pick):
+        pdx = self.patch_indices[i]
+        cache = None
+        if self.ref_cache_dir is not None:
+            cache = self.ref_cache_dir / (f"{self.roi_dir}_{self.roi}_s{self.seed}_i{self.img_size}_"
+                                          f"t{self.target_mode}{self.target_max_cloud}_p{pdx}.npy")
+            if cache.exists():
+                return np.load(cache)
+        frames, clouds = self.full_series(i)
+        ref = linear_interp_ref(frames, clouds, pick["t_days"], pick["target_idx"])
+        if cache is not None:
+            np.save(cache, ref)
+        return ref
+
     def __getitem__(self, i):
         pdx = self.patch_indices[i]
         pick = self._picks[pdx]
         target_idx, ref_idx, near_idx, t_days = pick["target_idx"], pick["ref_idx"], pick["near_idx"], pick["t_days"]
 
-        y_ref_raw = read_tif(self.series[ref_idx][pdx])
         x_near_raw = read_tif(self.series[near_idx][pdx])
         target_raw = read_tif(self.series[target_idx][pdx])
 
-        y_ref = self._maybe_resize((np.clip(y_ref_raw, 0, REFL_MAX) / REFL_MAX).astype(np.float32))
+        if self.ref_mode == "linear_interp":
+            y_ref = self._interp_ref(i, pick)
+        else:
+            y_ref = self._maybe_resize((np.clip(read_tif(self.series[ref_idx][pdx]), 0, REFL_MAX) / REFL_MAX).astype(np.float32))
         x_near_norm = (np.clip(x_near_raw, 0, REFL_MAX) / REFL_MAX).astype(np.float32)
         x_near = self._maybe_resize(x_near_norm)
         cloud_near = self._maybe_resize(simple_cloud_prob(x_near_raw)[None].astype(np.float32))

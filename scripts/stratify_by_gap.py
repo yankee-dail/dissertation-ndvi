@@ -61,6 +61,7 @@ def main():
     ap.add_argument("--variant", action="append", required=True, help="test_metrics_raw.json варіанту для порівняння")
     ap.add_argument("--variant-label", action="append", required=True)
     ap.add_argument("--n-strata", type=int, default=3, help="скільки груп за довжиною розриву (терцилі за замовчуванням)")
+    ap.add_argument("--n-boot", type=int, default=2000)
     ap.add_argument("--out", default="results/stratify_by_gap")
     args = ap.parse_args()
 
@@ -102,16 +103,24 @@ def main():
     # Пряме порівняння: чи фенологічний варіант наближається/перевершує чистий L1 САМЕ в довгій терцилі
     lines.append("## Чи звужується розрив (variant - baseline) у довгій терцилі порівняно з короткою?")
     lines.append("")
-    lines.append("| Варіант | Δ(variant-baseline) коротка терциль | Δ(variant-baseline) довга терциль |")
-    lines.append("|---|---|---|")
+    lines.append("| Варіант | Δ(variant-baseline) коротка терциль [95% ДІ] | Δ(variant-baseline) довга терциль [95% ДІ] | довга − коротка [95% ДІ] |")
+    lines.append("|---|---|---|---|")
     sel_short = strata == 0
     sel_long = strata == args.n_strata - 1
+    summary = {}
     for vpath, vlabel in zip(args.variant, args.variant_label):
         v_model_rmse, v_ref_rmse = load_rmse(vpath)
-        v_drmse = v_model_rmse - v_ref_rmse
-        diff_short = float(np.nanmean((v_drmse - base_drmse)[sel_short]))
-        diff_long = float(np.nanmean((v_drmse - base_drmse)[sel_long]))
-        lines.append(f"| {vlabel} | {diff_short:+.4f} | {diff_long:+.4f} |")
+        d = (v_model_rmse - v_ref_rmse) - base_drmse
+        s, l = d[sel_short & ~np.isnan(d)], d[sel_long & ~np.isnan(d)]
+        rng = np.random.default_rng(0)
+        bs = np.array([rng.choice(s, len(s)).mean() for _ in range(args.n_boot)])
+        bl = np.array([rng.choice(l, len(l)).mean() for _ in range(args.n_boot)])
+        ci = lambda a: (float(np.percentile(a, 2.5)), float(np.percentile(a, 97.5)))
+        row = {"short": [float(s.mean()), *ci(bs)], "long": [float(l.mean()), *ci(bl)],
+               "long_minus_short": [float(l.mean() - s.mean()), *ci(bl - bs)]}
+        summary[vlabel] = row
+        f = lambda v: f"{v[0]:+.4f} [{v[1]:+.4f}; {v[2]:+.4f}]"
+        lines.append(f"| {vlabel} | {f(row['short'])} | {f(row['long'])} | {f(row['long_minus_short'])} |")
 
     lines += [
         "",
@@ -131,6 +140,7 @@ def main():
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.md").write_text("\n".join(lines) + "\n")
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     print("\n".join(lines))
     print(f"\nЗбережено: {out_dir / 'report.md'}")
 
