@@ -34,11 +34,12 @@ from eval_protocol import all_metrics, rmse, mae, bootstrap_diff_ci, CLEAN_PIXEL
 
 CALIB_ROI = "s2_asiaEast_test/ROIs1970/139"
 TEST_ROI = "s2_america_test/ROIs1970/132"
-HIST_EDGES = np.logspace(-6, 4, 400_001)
+_POS = np.logspace(-6, 4, 400_001)
+HIST_EDGES = np.concatenate([-_POS[::-1], [0.0], _POS])  # знакові score теж (різниці індексів)
 
 
 class StreamingQuantile:
-    """Точний до ~6e-5 відносної похибки квантиль сотень мільйонів score без їх зберігання."""
+    """Точний до ~6e-5 відносної похибки квантиль сотень мільйонів (знакових) score без їх зберігання."""
 
     def __init__(self):
         self.counts = np.zeros(len(HIST_EDGES) + 1, dtype=np.int64)
@@ -57,8 +58,7 @@ class StreamingQuantile:
 
 
 def baselines(ds, i):
-    pdx = ds.patch_indices[i]
-    pick = ds._picks[pdx]
+    pick = ds.pick(i)
     frames, clouds = ds.full_series(i)
     t_days, tgt = pick["t_days"], pick["target_idx"]
     keep = np.abs(t_days - t_days[tgt]) > TOL_SAME_DAYS
@@ -104,8 +104,14 @@ def main():
     ap.add_argument("--low-conf-percentile", type=float, default=90.0)
     ap.add_argument("--ref-mode", default="prior_clean", choices=["prior_clean", "linear_interp"])
     ap.add_argument("--ref-cache-dir", default=None)
+    ap.add_argument("--near-mode", default="nearest", choices=["nearest", "prior"])
+    ap.add_argument("--unc-near-mode", default=None, choices=["nearest", "prior"],
+                     help="режим x_near σ-моделі (за замовчуванням = --near-mode)")
     ap.add_argument("--unc-ref-mode", default=None, choices=["prior_clean", "linear_interp"],
                      help="режим y_ref, на якому навчено σ-модель (за замовчуванням = --ref-mode)")
+    ap.add_argument("--calib-roi", default=CALIB_ROI)
+    ap.add_argument("--test-roi", default=TEST_ROI)
+    ap.add_argument("--samples-per-patch", type=int, default=1)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -118,19 +124,24 @@ def main():
     unc.load_state_dict(torch.load(args.uncertainty_model, map_location=device))
     step2.eval(), unc.eval()
 
-    calib_ds = build_dataset(args.root, [CALIB_ROI], args.img_size, "random_clean", 0.3, args.seed,
-                             ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir)
-    test_ds = build_dataset(args.root, [TEST_ROI], args.img_size, "random_clean", 0.3, args.seed,
-                             ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir)
+    calib_ds = build_dataset(args.root, [args.calib_roi], args.img_size, "random_clean", 0.3, args.seed,
+                             samples_per_patch=args.samples_per_patch, ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
+                             near_mode=args.near_mode)
+    test_ds = build_dataset(args.root, [args.test_roi], args.img_size, "random_clean", 0.3, args.seed,
+                             samples_per_patch=args.samples_per_patch, ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
+                             near_mode=args.near_mode)
 
     unc_mode = args.unc_ref_mode or args.ref_mode
-    if unc_mode == args.ref_mode:
+    unc_near = args.unc_near_mode or args.near_mode
+    if unc_mode == args.ref_mode and unc_near == args.near_mode:
         calib_unc_ds, test_unc_ds = calib_ds, test_ds
     else:
-        calib_unc_ds = build_dataset(args.root, [CALIB_ROI], args.img_size, "random_clean", 0.3, args.seed,
-                                     ref_mode=unc_mode, ref_cache_dir=args.ref_cache_dir)
-        test_unc_ds = build_dataset(args.root, [TEST_ROI], args.img_size, "random_clean", 0.3, args.seed,
-                                    ref_mode=unc_mode, ref_cache_dir=args.ref_cache_dir)
+        calib_unc_ds = build_dataset(args.root, [args.calib_roi], args.img_size, "random_clean", 0.3, args.seed,
+                                     ref_mode=unc_mode, ref_cache_dir=args.ref_cache_dir, near_mode=unc_near,
+                                     samples_per_patch=args.samples_per_patch)
+        test_unc_ds = build_dataset(args.root, [args.test_roi], args.img_size, "random_clean", 0.3, args.seed,
+                                    ref_mode=unc_mode, ref_cache_dir=args.ref_cache_dir, near_mode=unc_near,
+                                     samples_per_patch=args.samples_per_patch)
 
     sq_l1, sq_u = StreamingQuantile(), StreamingQuantile()
     calib_sigma_patches = []
@@ -190,7 +201,7 @@ def main():
     flagged = np.array([r["width_l1"] > width_cut for r in rows])
     rm = np.array([r["model"]["rmse"] for r in rows])
     summary = {
-        "img_size": args.img_size, "seed": args.seed, "ref_mode": args.ref_mode, "unc_ref_mode": unc_mode, "n_test": len(rows), "n_calib": len(calib_ds),
+        "img_size": args.img_size, "seed": args.seed, "ref_mode": args.ref_mode, "unc_ref_mode": unc_mode, "near_mode": args.near_mode, "unc_near_mode": unc_near, "n_test": len(rows), "n_calib": len(calib_ds),
         "q_l1_pair": q_l1, "q_sigma_model_own_mu": q_u,
         "coverage_l1_pair": cov["l1"][0] / cov["l1"][1], "coverage_sigma_model": cov["u"][0] / cov["u"][1],
         "mean_width_l1_pair": wsum["l1"] / cov["l1"][1], "mean_width_sigma_model": wsum["u"] / cov["u"][1],

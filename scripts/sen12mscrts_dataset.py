@@ -30,6 +30,7 @@ from eval_protocol import CLEAN_PIXEL_THRESH, TOL_SAME_DAYS
 
 REFL_MAX = 10000.0
 REF_MODES = ("prior_clean", "linear_interp")
+NEAR_MODES = ("nearest", "prior")
 S1_DB_MIN, S1_DB_MAX = -25.0, 0.0  # діапазон з офіційного process_SAR (dataLoader.py)
 
 
@@ -93,9 +94,10 @@ def pick_target_idx(frac, rng, max_cloud, mode="random_clean"):
 
 
 class SEN12MSCRTSPatchDataset(Dataset):
-    def __init__(self, root, roi_dir, roi, patch_indices, n_time_points=30,
+    def __init__(self, root, roi_dir, roi, patch_indices, n_time_points=None,
                  target_mode="random_clean", target_max_cloud=0.3, seed=0, img_size=None,
-                 s1_root=None, era5_path=None, ref_mode="prior_clean", ref_cache_dir=None):
+                 s1_root=None, era5_path=None, ref_mode="prior_clean", ref_cache_dir=None,
+                 near_mode="nearest", samples_per_patch=1):
         """s1_root: директорія з тією самою структурою <roi_dir>/<roi>/S1/<tdx>/*.tif -
         якщо задано, до x додається VV/VH (ref і near кадри, 2x2=4 канали). S1 НІКОЛИ не
         йде в ціль - лише як додатковий вхід (радар не замінює оптичну ground truth).
@@ -105,7 +107,14 @@ class SEN12MSCRTSPatchDataset(Dataset):
         self.root = Path(root)
         self.roi_dir, self.roi = roi_dir, roi
         self.patch_indices = list(patch_indices)
+        s2_dir = Path(root) / roi_dir / roi / "S2"
+        if n_time_points is None:
+            n_time_points = len([d for d in s2_dir.iterdir() if d.is_dir() and d.name.isdigit()])
         self.n_t = n_time_points
+        # Власні дані L2A (fetch_s2_l2a.py) мають поруч CLD/<tdx>/ - хмарну маску з SCL
+        # (0/100). Тоді вона замінює евристику яскравості simple_cloud_prob.
+        cld = Path(root) / roi_dir / roi / "CLD"
+        self.cld_dir = cld if cld.is_dir() else None
         self.target_mode = target_mode
         self.target_max_cloud = target_max_cloud
         self.seed = seed
@@ -114,6 +123,9 @@ class SEN12MSCRTSPatchDataset(Dataset):
         if ref_mode not in REF_MODES:
             raise ValueError(f"ref_mode має бути одним із {REF_MODES}")
         self.ref_mode = ref_mode
+        if near_mode not in NEAR_MODES:
+            raise ValueError(f"near_mode має бути одним із {NEAR_MODES}")
+        self.near_mode = near_mode
         self.ref_cache_dir = Path(ref_cache_dir) if ref_cache_dir is not None else None
         if self.ref_cache_dir is not None:
             self.ref_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -145,18 +157,41 @@ class SEN12MSCRTSPatchDataset(Dataset):
         # Одноразовий прохід: обираємо (target_idx, ref_idx, near_idx) на декантованих
         # (швидких) версіях зображень, щоб потім на кожній епосі читати лише 3 повнорозмірні
         # .tif на семпл замість усіх 30 (10x менше дискового І/О на епоху).
+        # Кілька семплів (різних цільових дат) з одного фрагмента - для власних L2A-рядів із
+        # десятками дат; samples_per_patch=1 відтворює попередню поведінку один в один.
+        self.samples = [(pdx, j) for pdx in self.patch_indices for j in range(samples_per_patch)]
         self._picks = {}
         for pdx in self.patch_indices:
-            self._picks[pdx] = self._precompute_picks(pdx)
+            used = set()
+            for j in range(samples_per_patch):
+                self._picks[(pdx, j)] = self._precompute_picks(pdx, j, used)
+                used.add(self._picks[(pdx, j)]["target_idx"])
 
-    def _precompute_picks(self, pdx):
+    def pdx(self, i):
+        return self.samples[i][0]
+
+    def pick(self, i):
+        return self._picks[self.samples[i]]
+
+    def _precompute_picks(self, pdx, j=0, used=()):
         paths = [self.series[tdx][pdx] for tdx in range(self.n_t)]
-        small = [read_tif_decimated(p) for p in paths]
-        frac = np.array([float(simple_cloud_prob(f).mean()) for f in small])
+        if not hasattr(self, "_frac_cache"):
+            self._frac_cache = {}
+        if pdx not in self._frac_cache:
+            self._frac_cache[pdx] = np.array([float(self._cloud(tdx, pdx, decimated=True).mean())
+                                              for tdx in range(self.n_t)])
+        frac = self._frac_cache[pdx].copy()
         t_days = np.array([self._parse_day(p.name) for p in paths], dtype=np.int64)
 
-        rng = np.random.default_rng(self.seed + pdx)
-        target_idx = pick_target_idx(frac, rng, self.target_max_cloud, self.target_mode)
+        rng = np.random.default_rng(self.seed + pdx + 100003 * j)
+        if used and (np.delete(frac, list(used)) <= self.target_max_cloud).any():
+            frac[list(used)] = np.inf
+        if self.near_mode == "prior":
+            # Причинний режим: ціль, перед якою немає жодного кадру, неможливо прогнозувати з минулого.
+            frac_sel = np.where(t_days > t_days.min(), frac, np.inf)
+            target_idx = pick_target_idx(frac_sel, rng, self.target_max_cloud, self.target_mode)
+        else:
+            target_idx = pick_target_idx(frac, rng, self.target_max_cloud, self.target_mode)
 
         before = [t for t in range(self.n_t) if t_days[t] < t_days[target_idx]]
         if before:
@@ -166,12 +201,16 @@ class SEN12MSCRTSPatchDataset(Dataset):
             ref_idx = others[int(np.argmin(frac[others]))]
 
         rest = [t for t in range(self.n_t) if t not in (target_idx, ref_idx)]
-        near_idx = rest[int(np.argmin(np.abs(t_days[rest] - t_days[target_idx])))]
+        if self.near_mode == "prior":
+            # Причинний режим: лише кадри СТРОГО до цілі (для раннього виявлення - модель не
+            # може бачити майбутнє). Якщо таких немає, крім ref - x_near дублює ref.
+            rest = [t for t in rest if t_days[t] < t_days[target_idx]]
+        near_idx = (rest[int(np.argmin(np.abs(t_days[rest] - t_days[target_idx])))] if rest else ref_idx)
 
         return {"target_idx": target_idx, "ref_idx": ref_idx, "near_idx": near_idx, "t_days": t_days}
 
     def __len__(self):
-        return len(self.patch_indices)
+        return len(self.samples)
 
     def _maybe_resize(self, arr):
         # arr: (C, H, W). Прості strided-кроки замість інтерполяції - досить для прототипу швидкості.
@@ -181,22 +220,32 @@ class SEN12MSCRTSPatchDataset(Dataset):
         step_h, step_w = h // self.img_size, w // self.img_size
         return arr[:, ::step_h, ::step_w][:, : self.img_size, : self.img_size]
 
+    def _cloud(self, tdx, pdx, raw=None, decimated=False):
+        """Карта хмарності (H, W) у [0, 1]: з CLD/ (SCL), якщо є, інакше евристика яскравості."""
+        if self.cld_dir is not None:
+            path = self.cld_dir / str(tdx) / self.series[tdx][pdx].name
+            img = read_tif_decimated(path) if decimated else read_tif(path)
+            return (img[0] / 100.0).astype(np.float32)
+        if raw is None:
+            raw = read_tif_decimated(self.series[tdx][pdx]) if decimated else read_tif(self.series[tdx][pdx])
+        return simple_cloud_prob(raw)
+
     def full_series(self, i):
         """Увесь 30-кадровий ряд фрагмента: (T, C, H, W) відбиття [0,1] і (T, H, W) хмарність."""
-        pdx = self.patch_indices[i]
+        pdx = self.pdx(i)
         frames, clouds = [], []
         for t in range(self.n_t):
             raw = read_tif(self.series[t][pdx])
             frames.append(self._maybe_resize((np.clip(raw, 0, REFL_MAX) / REFL_MAX).astype(np.float32)))
-            clouds.append(self._maybe_resize(simple_cloud_prob(raw)[None])[0])
+            clouds.append(self._maybe_resize(self._cloud(t, pdx, raw)[None])[0])
         return np.stack(frames), np.stack(clouds)
 
     def _interp_ref(self, i, pick):
-        pdx = self.patch_indices[i]
+        pdx = self.pdx(i)
         cache = None
         if self.ref_cache_dir is not None:
             cache = self.ref_cache_dir / (f"{self.roi_dir}_{self.roi}_s{self.seed}_i{self.img_size}_"
-                                          f"t{self.target_mode}{self.target_max_cloud}_p{pdx}.npy")
+                                          f"t{self.target_mode}{self.target_max_cloud}_p{pdx}_j{self.samples[i][1]}.npy")
             if cache.exists():
                 return np.load(cache)
         frames, clouds = self.full_series(i)
@@ -206,8 +255,8 @@ class SEN12MSCRTSPatchDataset(Dataset):
         return ref
 
     def __getitem__(self, i):
-        pdx = self.patch_indices[i]
-        pick = self._picks[pdx]
+        pdx = self.pdx(i)
+        pick = self.pick(i)
         target_idx, ref_idx, near_idx, t_days = pick["target_idx"], pick["ref_idx"], pick["near_idx"], pick["t_days"]
 
         x_near_raw = read_tif(self.series[near_idx][pdx])
@@ -219,7 +268,7 @@ class SEN12MSCRTSPatchDataset(Dataset):
             y_ref = self._maybe_resize((np.clip(read_tif(self.series[ref_idx][pdx]), 0, REFL_MAX) / REFL_MAX).astype(np.float32))
         x_near_norm = (np.clip(x_near_raw, 0, REFL_MAX) / REFL_MAX).astype(np.float32)
         x_near = self._maybe_resize(x_near_norm)
-        cloud_near = self._maybe_resize(simple_cloud_prob(x_near_raw)[None].astype(np.float32))
+        cloud_near = self._maybe_resize(self._cloud(near_idx, pdx, x_near_raw)[None].astype(np.float32))
         target = self._maybe_resize((np.clip(target_raw, 0, REFL_MAX) / REFL_MAX).astype(np.float32))
 
         day_gap = np.full((1,) + y_ref.shape[1:], (t_days[near_idx] - t_days[target_idx]) / 365.0,
@@ -236,7 +285,7 @@ class SEN12MSCRTSPatchDataset(Dataset):
         # Хмарність ЦІЛІ (а не входу): target_max_cloud - поріг на СЕРЕДНЮ хмарність усього
         # патча, тож окремі пікселі цілі можуть лишатись хмарними. Повертаємо карту, щоб
         # метрики могли виключити ці пікселі замість порівнювати прогноз із хмарою.
-        target_cloud = self._maybe_resize(simple_cloud_prob(target_raw)[None].astype(np.float32))[0]
+        target_cloud = self._maybe_resize(self._cloud(target_idx, pdx, target_raw)[None].astype(np.float32))[0]
 
         # Інтервал y_ref -> ціль - потрібен фенологічному члену втрат для масштабування
         # допустимої швидкості зміни NDVI. У GDD (точніше, бо фенофаза залежить від суми
@@ -256,8 +305,8 @@ class SEN12MSCRTSPatchDataset(Dataset):
         """Метадані походження для інформаційної моделі (§11 REPORT.md) - НЕ впливає на
         __getitem__/тренування, лише для трасування "виміряне -> відновлене" поза
         тензорами. Повертає файли й дати ref/target кадрів, обраних для цього патча."""
-        pdx = self.patch_indices[i]
-        pick = self._picks[pdx]
+        pdx = self.pdx(i)
+        pick = self.pick(i)
         ref_idx, target_idx = pick["ref_idx"], pick["target_idx"]
         return {
             "roi": f"{self.roi_dir}/{self.roi}", "patch_idx": pdx,

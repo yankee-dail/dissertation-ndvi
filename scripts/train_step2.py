@@ -128,7 +128,8 @@ def resolve_s1_root(s2_root):
 
 
 def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed, max_patches_per_roi=None,
-                   use_s1=False, era5_root=None, ref_mode="prior_clean", ref_cache_dir=None):
+                   use_s1=False, era5_root=None, ref_mode="prior_clean", ref_cache_dir=None,
+                   near_mode="nearest", samples_per_patch=1):
     """max_patches_per_roi дозволяє зрівняти ЗАГАЛЬНИЙ обсяг даних між прогонами з різною
     кількістю ROI (контроль обсягу при перевірці ефекту різноманітності локацій) - бере
     перші N патчів з кожного переліченого ROI замість усіх. use_s1 додає VV/VH з сусідньої
@@ -147,9 +148,10 @@ def build_dataset(root, specs, img_size, target_mode, target_max_cloud, seed, ma
         ds = SEN12MSCRTSPatchDataset(root=r, roi_dir=roi_dir, roi=roi, patch_indices=range(n),
                                       img_size=img_size, target_mode=target_mode,
                                       target_max_cloud=target_max_cloud, seed=seed, s1_root=s1_root,
-                                      era5_path=era5_path, ref_mode=ref_mode, ref_cache_dir=ref_cache_dir)
-        tags = ("+S1" if use_s1 else "") + ("+ERA5" if era5_root else "") + ("+yref=interp" if ref_mode == "linear_interp" else "")
-        print(f"  {spec}: {n} патчів" + (f" ({tags})" if tags else ""))
+                                      era5_path=era5_path, ref_mode=ref_mode, ref_cache_dir=ref_cache_dir,
+                                      near_mode=near_mode, samples_per_patch=samples_per_patch)
+        tags = ("+S1" if use_s1 else "") + ("+ERA5" if era5_root else "") + ("+yref=interp" if ref_mode == "linear_interp" else "") + ("+causal_near" if near_mode == "prior" else "")
+        print(f"  {spec}: {n} патчів x {samples_per_patch} дат" + (f" ({tags})" if tags else ""))
         parts.append(ds)
     return ConcatDataset(parts) if len(parts) > 1 else parts[0]
 
@@ -230,6 +232,11 @@ def main():
                           "або лінійна інтерполяція між чистими пікселями до і після цілі (формула 2.11)")
     ap.add_argument("--ref-cache-dir", default=None,
                      help="кеш інтерпольованих y_ref (.npy) - щоб не читати 30 кадрів на кожній епосі")
+    ap.add_argument("--near-mode", default="nearest", choices=["nearest", "prior"],
+                     help="x_near: найближчий кадр (може бути ПІСЛЯ цілі) або лише з кадрів ДО цілі "
+                          "(причинний режим для раннього виявлення; разом із --ref-mode prior_clean)")
+    ap.add_argument("--samples-per-patch", type=int, default=1,
+                     help="скільки різних цільових дат брати з кожного фрагмента (для щільних L2A-рядів)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_prototype")
     ap.add_argument("--n-boot", type=int, default=2000)
@@ -247,15 +254,18 @@ def main():
     train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode,
                               args.target_max_cloud, args.seed, args.max_train_patches_per_roi,
                               use_s1=args.use_s1, era5_root=args.era5_root,
-                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir)
+                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
+                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch)
     print("Val ROI (лише для вибору епохи, інша локація):")
     val_ds = build_dataset(args.root, args.val_roi, args.img_size, args.target_mode,
                             args.target_max_cloud, args.seed, use_s1=args.use_s1, era5_root=args.era5_root,
-                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir)
+                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
+                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch)
     print("Test ROI (лише для фінального звіту, ще інша локація):")
     test_ds = build_dataset(args.root, args.test_roi, args.img_size, args.target_mode,
                              args.target_max_cloud, args.seed, use_s1=args.use_s1, era5_root=args.era5_root,
-                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir)
+                              ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
+                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch)
     print(f"Разом: train={len(train_ds)}, val={len(val_ds)}, test={len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
@@ -361,6 +371,7 @@ def main():
         "# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref",
         "",
         f"Вхід включає Sentinel-1 (VV/VH): {'так' if args.use_s1 else 'ні'}.",
+        f"x_near: {'лише кадри до цілі (причинний режим)' if args.near_mode == 'prior' else 'найближчий кадр (може бути після цілі)'}.",
         f"Опорне значення y_ref: {'лінійна інтерполяція між чистими пікселями до і після цілі' if args.ref_mode == 'linear_interp' else 'останнє чисте попереднє спостереження'}.",
         f"Фенологічний член втрат: {'так, вага ' + str(args.phen_weight) + f', межі [{rate_lo:.4f},{rate_hi:.4f}] NDVI/' + ('GDD' if args.era5_root else 'день') + ', асиметрія x' + str(args.phen_asym_ratio) + (f', лінійний розігрів ваги за {args.phen_ramp_epochs} епох' if args.phen_ramp_epochs > 0 else '') + (f', пороги оцінено з {len(args.phen_threshold_roi)} окремих threshold-ROI' if args.phen_threshold_roi else '') if args.phen_weight > 0 else 'ні'}.",
         f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів).",
