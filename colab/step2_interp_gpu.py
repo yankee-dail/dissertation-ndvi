@@ -51,11 +51,34 @@ def run(cmd, cwd=None, check=True, retries=1):
     return proc.returncode
 
 
+def check_token(token):
+    """Пояснює, ЧОМУ git не може авторизуватись, замість туманного 'could not read Username'."""
+    import json
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request("https://api.github.com/repos/yankee-dail/dissertation-ndvi",
+                                 headers={"Authorization": f"Bearer {token.strip()}",
+                                          "Accept": "application/vnd.github+json"})
+    try:
+        with urllib.request.urlopen(req) as r:
+            perms = json.load(r).get("permissions", {})
+    except urllib.error.HTTPError as e:
+        hints = {401: "токен недійсний, прострочений або відкликаний - створи новий і онови Colab Secret",
+                 403: "токену заборонено доступ (SSO/обмеження організації чи rate limit)",
+                 404: "токен валідний, але НЕ має доступу до цього приватного репо - для fine-grained токена "
+                      "додай yankee-dail/dissertation-ndvi у 'Repository access' і дай Contents: Read and write"}
+        sys.exit(f"Перевірка GITHUB_TOKEN: HTTP {e.code} - {hints.get(e.code, e.reason)}")
+    if not perms.get("push"):
+        sys.exit("GITHUB_TOKEN читає репо, але без права запису - потрібен Contents: Read and write (або scope 'repo')")
+    print("GITHUB_TOKEN: доступ до репо з правом запису - ок", flush=True)
+
+
 def main():
-    token = os.environ.get("GITHUB_TOKEN")
+    token = (os.environ.get("GITHUB_TOKEN") or "").strip()
     if not token:
         sys.exit("GITHUB_TOKEN відсутній - встанови os.environ['GITHUB_TOKEN'] у клітинці ноутбука")
-    remote = f"https://{token}@github.com/yankee-dail/dissertation-ndvi.git"
+    check_token(token)
+    remote = f"https://x-access-token:{token}@github.com/yankee-dail/dissertation-ndvi.git"
 
     if os.path.exists(REPO) and not os.path.isdir(f"{REPO}/.git"):
         aside = f"{REPO}_old_{int(time.time())}"
