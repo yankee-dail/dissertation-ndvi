@@ -1,0 +1,31 @@
+/Users/sbaluk/dissertation-ndvi/.venv312/lib/python3.12/site-packages/skimage/metrics/_structural_similarity.py:4: UserWarning: A NumPy version >=2.0.0 and <2.8.0 is required for this version of SciPy (detected version 1.26.4)
+  from scipy.ndimage import uniform_filter
+/Users/sbaluk/dissertation-ndvi/.venv312/lib/python3.12/site-packages/numpy/core/fromnumeric.py:3504: RuntimeWarning: Mean of empty slice.
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/Users/sbaluk/dissertation-ndvi/.venv312/lib/python3.12/site-packages/numpy/core/_methods.py:129: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+  poltava2021/zones/calib: 30 патчів x 8 дат (+causal_near)
+  poltava2021/zones/test: 30 патчів x 8 дат (+causal_near)
+# Конформне виявлення штучного стресу (near_mode=prior, спільний поріг), 240 фрагментів
+Осередок 8×8 пікс., межі терцилей розриву (діб): 5, 5, 15, 80
+
+## α = 0.1 (номінальна частка хибних тривог)
+
+| | ndvi | ndre | ms |
+|---|---|---|---|
+| FPR | 0.103 | 0.113 | 0.084 |
+| TPR, s=0.05 | 0.113 [0.080; 0.148] | 0.144 [0.107; 0.182] | 0.077 [0.052; 0.105] |
+| TPR, s=0.1 | 0.132 [0.096; 0.168] | 0.164 [0.125; 0.205] | 0.094 [0.066; 0.125] |
+| TPR, s=0.2 | 0.205 [0.163; 0.250] | 0.245 [0.196; 0.289] | 0.136 [0.102; 0.173] |
+| TPR, s=0.3 | 0.281 [0.233; 0.327] | 0.398 [0.346; 0.450] | 0.207 [0.167; 0.251] |
+
+## α = 0.05 (номінальна частка хибних тривог)
+
+| | ndvi | ndre | ms |
+|---|---|---|---|
+| FPR | 0.056 | 0.068 | 0.031 |
+| TPR, s=0.05 | 0.080 [0.053; 0.109] | 0.088 [0.062; 0.118] | 0.024 [0.011; 0.040] |
+| TPR, s=0.1 | 0.090 [0.061; 0.121] | 0.107 [0.077; 0.141] | 0.031 [0.015; 0.050] |
+| TPR, s=0.2 | 0.119 [0.085; 0.152] | 0.153 [0.115; 0.192] | 0.051 [0.031; 0.076] |
+| TPR, s=0.3 | 0.195 [0.152; 0.238] | 0.237 [0.190; 0.279] | 0.101 [0.071; 0.134] |
+

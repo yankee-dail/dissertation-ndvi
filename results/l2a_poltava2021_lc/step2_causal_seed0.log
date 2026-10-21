@@ -1,0 +1,47 @@
+/Users/sbaluk/dissertation-ndvi/.venv312/lib/python3.12/site-packages/skimage/metrics/_structural_similarity.py:4: UserWarning: A NumPy version >=2.0.0 and <2.8.0 is required for this version of SciPy (detected version 1.26.4)
+  from scipy.ndimage import uniform_filter
+Пристрій: cpu
+Train ROI:
+  poltava2021/zones/train: 70 патчів x 8 дат (+causal_near)
+Val ROI (лише для вибору епохи, інша локація):
+  poltava2021/zones/val: 20 патчів x 8 дат (+causal_near)
+Test ROI (лише для фінального звіту, ще інша локація):
+  poltava2021/zones/test: 30 патчів x 8 дат (+causal_near)
+Разом: train=560, val=160, test=240
+epoch 1/10  train_L1=0.0881  val_L1=0.0723  baseline_yref_L1=0.0726  (найкращий дотепер)
+epoch 2/10  train_L1=0.0660  val_L1=0.0682  baseline_yref_L1=0.0726  (найкращий дотепер)
+epoch 3/10  train_L1=0.0641  val_L1=0.0656  baseline_yref_L1=0.0726  (найкращий дотепер)
+epoch 4/10  train_L1=0.0627  val_L1=0.0662  baseline_yref_L1=0.0726
+epoch 5/10  train_L1=0.0599  val_L1=0.0646  baseline_yref_L1=0.0726  (найкращий дотепер)
+epoch 6/10  train_L1=0.0615  val_L1=0.0654  baseline_yref_L1=0.0726
+epoch 7/10  train_L1=0.0611  val_L1=0.0641  baseline_yref_L1=0.0726  (найкращий дотепер)
+epoch 8/10  train_L1=0.0588  val_L1=0.0641  baseline_yref_L1=0.0726
+epoch 9/10  train_L1=0.0595  val_L1=0.0638  baseline_yref_L1=0.0726  (найкращий дотепер)
+epoch 10/10  train_L1=0.0581  val_L1=0.0631  baseline_yref_L1=0.0726  (найкращий дотепер)
+
+Найкраща епоха за val_L1: 10 (val_L1=0.0631) - саме цей чекпоінт оцінюється й зберігається.
+
+# Крок 2 (прототип): залишкова U-Net проти копіювання y_ref
+
+Вхід включає Sentinel-1 (VV/VH): ні.
+x_near: лише кадри до цілі (причинний режим).
+Вибір y_ref серед попередніх: latest_clean.
+Опорне значення y_ref: останнє чисте попереднє спостереження.
+Фенологічний член втрат: ні.
+Train ROI: poltava2021/zones/train (560 патчів).
+Val ROI (вибір епохи): poltava2021/zones/val (160 патчів).
+Test ROI (фінальний звіт, НЕ бачений при виборі епохи): poltava2021/zones/test (240 патчів).
+Епох: 10, розмір зображення (даунсемпл): 128x128. Найкраща епоха за val_L1: 10.
+RMSE/MAE/SAM рахувались лише по пікселях цілі з хмарністю < 0.2 (3778145/3932160 = 96.1% пікселів test-набору; SSIM - без маски). Лосс тренування й вибору епохи - НЕ маскований (повний target).
+
+- Модель (y_ref + Δθ):  RMSE 0.0632±0.0301  MAE 0.0452±0.0225  SSIM 0.5535±0.1653  SAM 12.33±7.77°
+- Базовий рівень (y_ref): RMSE 0.0743±0.0401  MAE 0.0537±0.0321  SSIM 0.5688±0.2129  SAM 12.87±9.12°
+
+Δ RMSE (модель - базовий) = -0.0110 [-0.0137, -0.0083] - значуще краще
+Δ SAM  (модель - базовий) = -0.55° [-1.08, +0.01] - не значуще (CI перетинає 0)
+
+Критерій кроку 2 (статистично значуще не гірше за базовий метод за RMSE І SAM) НЕ виконано на цьому прототипі.
+
+Це прототип на 1 train-, 1 val- і 1 test-ROI, 1 запуск (не >=5 із різними seed) - недостатньо для дисертаційного висновку. CI тут відображає лише розкид між тестовими патчами в межах цього одного навченого запуску, НЕ розкид між повторними тренуваннями.
+
+Збережено: results/l2a_poltava2021_lc/step2_causal_seed0/report.md, results/l2a_poltava2021_lc/step2_causal_seed0/model.pt
