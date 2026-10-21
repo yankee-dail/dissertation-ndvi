@@ -83,9 +83,13 @@ def main():
     args = ap.parse_args()
 
     L = ["# Власні дані Sentinel-2 L2A проти SEN12MS-CR-TS: причинна реконструкція, калібрування, виявлення стресу", ""]
-    v, a, am = load(SEN12MS["validation"]), load(SEN12MS["anomaly"]), load(SEN12MS["anomaly_mondrian"])
-    L += section("SEN12MS-CR-TS, america/132 (Пампа), калібрування на asiaEast/139 (Китай)",
-                 [v] if v else [], [a] if a else [], [am] if am else [], [gap_median(SEN12MS["validation"])])
+    for tag, label in (("causal", "y_ref = найчистіший попередній"), ("causal_lc", "y_ref = найпізніший чистий")):
+        vp, ap_ = f"results/validation_extras/{tag}_cpu_seed0", f"results/anomaly_detection/{tag}_cpu_seed0"
+        v, a = load(vp), load(ap_)
+        am = load(SEN12MS["anomaly_mondrian"]) if tag == "causal" else None
+        if v:
+            L += section(f"SEN12MS-CR-TS, america/132, калібрування на asiaEast/139 (Китай), {label}",
+                         [v], [a] if a else [], [am] if am else [], [gap_median(vp)])
     for region in args.region:
         base = Path(f"results/l2a_{region}")
         vals = [load(base / f"validation_seed{s}") for s in args.seeds]

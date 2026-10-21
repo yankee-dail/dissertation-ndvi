@@ -125,6 +125,7 @@ def main():
     ap.add_argument("--ref-cache-dir", default=None)
     ap.add_argument("--near-mode", default="nearest", choices=["nearest", "prior"])
     ap.add_argument("--samples-per-patch", type=int, default=1)
+    ap.add_argument("--ref-select", default="clearest", choices=["clearest", "latest_clean"])
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_uncertainty")
     args = ap.parse_args()
@@ -140,15 +141,18 @@ def main():
     print("Train ROI:")
     train_ds = build_dataset(args.root, args.train_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed,
                               ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
-                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch)
+                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch,
+                              ref_select=args.ref_select)
     print("Calib ROI (для підбору q, окрема локація):")
     calib_ds = build_dataset(args.root, args.calib_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed,
                               ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
-                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch)
+                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch,
+                              ref_select=args.ref_select)
     print("Test ROI (для звіту про покриття, окрема локація):")
     test_ds = build_dataset(args.root, args.test_roi, args.img_size, args.target_mode, args.target_max_cloud, args.seed,
                               ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
-                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch)
+                              near_mode=args.near_mode, samples_per_patch=args.samples_per_patch,
+                              ref_select=args.ref_select)
     print(f"Разом: train={len(train_ds)}, calib={len(calib_ds)}, test={len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)

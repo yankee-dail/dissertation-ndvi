@@ -112,6 +112,7 @@ def main():
     ap.add_argument("--calib-roi", default=CALIB_ROI)
     ap.add_argument("--test-roi", default=TEST_ROI)
     ap.add_argument("--samples-per-patch", type=int, default=1)
+    ap.add_argument("--ref-select", default="clearest", choices=["clearest", "latest_clean"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -125,10 +126,10 @@ def main():
     step2.eval(), unc.eval()
 
     calib_ds = build_dataset(args.root, [args.calib_roi], args.img_size, "random_clean", 0.3, args.seed,
-                             samples_per_patch=args.samples_per_patch, ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
+                             samples_per_patch=args.samples_per_patch, ref_select=args.ref_select, ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
                              near_mode=args.near_mode)
     test_ds = build_dataset(args.root, [args.test_roi], args.img_size, "random_clean", 0.3, args.seed,
-                             samples_per_patch=args.samples_per_patch, ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
+                             samples_per_patch=args.samples_per_patch, ref_select=args.ref_select, ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
                              near_mode=args.near_mode)
 
     unc_mode = args.unc_ref_mode or args.ref_mode
@@ -138,10 +139,10 @@ def main():
     else:
         calib_unc_ds = build_dataset(args.root, [args.calib_roi], args.img_size, "random_clean", 0.3, args.seed,
                                      ref_mode=unc_mode, ref_cache_dir=args.ref_cache_dir, near_mode=unc_near,
-                                     samples_per_patch=args.samples_per_patch)
+                                     samples_per_patch=args.samples_per_patch, ref_select=args.ref_select)
         test_unc_ds = build_dataset(args.root, [args.test_roi], args.img_size, "random_clean", 0.3, args.seed,
                                     ref_mode=unc_mode, ref_cache_dir=args.ref_cache_dir, near_mode=unc_near,
-                                     samples_per_patch=args.samples_per_patch)
+                                     samples_per_patch=args.samples_per_patch, ref_select=args.ref_select)
 
     sq_l1, sq_u = StreamingQuantile(), StreamingQuantile()
     calib_sigma_patches = []

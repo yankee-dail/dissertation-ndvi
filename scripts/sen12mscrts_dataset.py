@@ -97,7 +97,8 @@ class SEN12MSCRTSPatchDataset(Dataset):
     def __init__(self, root, roi_dir, roi, patch_indices, n_time_points=None,
                  target_mode="random_clean", target_max_cloud=0.3, seed=0, img_size=None,
                  s1_root=None, era5_path=None, ref_mode="prior_clean", ref_cache_dir=None,
-                 near_mode="nearest", samples_per_patch=1):
+                 near_mode="nearest", samples_per_patch=1,
+                 ref_select="clearest", ref_max_cloud=0.1):
         """s1_root: директорія з тією самою структурою <roi_dir>/<roi>/S1/<tdx>/*.tif -
         якщо задано, до x додається VV/VH (ref і near кадри, 2x2=4 канали). S1 НІКОЛИ не
         йде в ціль - лише як додатковий вхід (радар не замінює оптичну ground truth).
@@ -126,6 +127,11 @@ class SEN12MSCRTSPatchDataset(Dataset):
         if near_mode not in NEAR_MODES:
             raise ValueError(f"near_mode має бути одним із {NEAR_MODES}")
         self.near_mode = near_mode
+        if ref_select not in ("clearest", "latest_clean"):
+            raise ValueError("ref_select: clearest | latest_clean")
+        # clearest - найчистіший серед попередніх (історична поведінка, на щільних рядах може
+        # бути піврічної давності); latest_clean - найпізніший попередній з хмарністю <= ref_max_cloud.
+        self.ref_select, self.ref_max_cloud = ref_select, ref_max_cloud
         self.ref_cache_dir = Path(ref_cache_dir) if ref_cache_dir is not None else None
         if self.ref_cache_dir is not None:
             self.ref_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -193,12 +199,16 @@ class SEN12MSCRTSPatchDataset(Dataset):
         else:
             target_idx = pick_target_idx(frac, rng, self.target_max_cloud, self.target_mode)
 
+        frac0 = self._frac_cache[pdx]  # без позначок "уже використана ціль" - вони лише для вибору цілі
         before = [t for t in range(self.n_t) if t_days[t] < t_days[target_idx]]
-        if before:
-            ref_idx = before[int(np.argmin(frac[before]))]
+        clean_before = [t for t in before if frac0[t] <= self.ref_max_cloud]
+        if self.ref_select == "latest_clean" and clean_before:
+            ref_idx = max(clean_before, key=lambda t: t_days[t])
+        elif before:
+            ref_idx = before[int(np.argmin(frac0[before]))]
         else:
             others = [t for t in range(self.n_t) if t != target_idx]
-            ref_idx = others[int(np.argmin(frac[others]))]
+            ref_idx = others[int(np.argmin(frac0[others]))]
 
         rest = [t for t in range(self.n_t) if t not in (target_idx, ref_idx)]
         if self.near_mode == "prior":

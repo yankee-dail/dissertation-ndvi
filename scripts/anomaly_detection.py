@@ -91,6 +91,7 @@ def main():
     ap.add_argument("--calib-roi", default=CALIB_ROI)
     ap.add_argument("--test-roi", default=TEST_ROI)
     ap.add_argument("--samples-per-patch", type=int, default=1)
+    ap.add_argument("--ref-select", default="clearest", choices=["clearest", "latest_clean"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -102,7 +103,7 @@ def main():
     unc.load_state_dict(torch.load(args.uncertainty_model, map_location=device))
     step2.eval(), unc.eval()
 
-    kw = dict(near_mode=args.near_mode, samples_per_patch=args.samples_per_patch)
+    kw = dict(near_mode=args.near_mode, samples_per_patch=args.samples_per_patch, ref_select=args.ref_select)
     calib_ds = build_dataset(args.root, [args.calib_roi], args.img_size, "random_clean", 0.3, args.seed, **kw)
     test_ds = build_dataset(args.root, [args.test_roi], args.img_size, "random_clean", 0.3, args.seed, **kw)
 
