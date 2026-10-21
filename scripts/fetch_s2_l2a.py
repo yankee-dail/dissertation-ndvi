@@ -19,6 +19,7 @@ UTM-сітці тайла, випадкова вибірка n фрагмент�
 """
 import argparse
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -36,7 +37,7 @@ BAND_ASSETS = ["coastal", "blue", "green", "red", "rededge1", "rededge2", "reded
                "nir09", None, "swir16", "swir22"]  # None = B10 (немає в L2A)
 CLOUDY_SCL = (0, 1, 3, 8, 9, 10)
 GDAL_ENV = dict(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif",
-                GDAL_HTTP_MAX_RETRY="6", GDAL_HTTP_RETRY_DELAY="3", GDAL_HTTP_MULTIPLEX="YES",
+                GDAL_HTTP_MAX_RETRY="6", GDAL_HTTP_RETRY_DELAY="3", GDAL_HTTP_MULTIPLEX="NO", GDAL_HTTP_TIMEOUT="60",
                 VSI_CACHE="TRUE", GDAL_CACHEMAX=512)
 
 
@@ -86,12 +87,22 @@ def sample_cells(zones, epsg, tile_bounds, patch_m, seed):
     return cells
 
 
-def read_asset(href, boxes, px, resampling, scale_offset):
-    with rasterio.Env(**GDAL_ENV), rasterio.open(href) as src:
-        out = []
-        for (x, y, x2, y2) in boxes:
-            w = from_bounds(x, y, x2, y2, src.transform)
-            out.append(src.read(1, window=w, out_shape=(px, px), resampling=resampling, boundless=True, fill_value=0))
+def read_asset(href, boxes, px, resampling, scale_offset, attempts=6):
+    # S3 іноді обриває окремі range-запити (RasterioIOError: Read failed) - повторюємо весь asset.
+    for attempt in range(1, attempts + 1):
+        try:
+            with rasterio.Env(**GDAL_ENV), rasterio.open(href) as src:
+                out = []
+                for (x, y, x2, y2) in boxes:
+                    w = from_bounds(x, y, x2, y2, src.transform)
+                    out.append(src.read(1, window=w, out_shape=(px, px), resampling=resampling,
+                                        boundless=True, fill_value=0))
+            break
+        except rasterio.errors.RasterioIOError as e:
+            if attempt == attempts:
+                raise
+            print(f"  повтор {attempt}/{attempts - 1} для {href.rsplit('/', 1)[-1]}: {e}", flush=True)
+            time.sleep(15 * attempt)
     arr = np.stack(out)
     if scale_offset is None:
         return arr
@@ -171,7 +182,7 @@ def main():
                 return read_asset(a["href"], boxes, px, Resampling.nearest, None)
             return read_asset(a["href"], boxes, px, rs, (rb.get("scale", 1e-4), rb.get("offset", 0.0)))
 
-        with ThreadPoolExecutor(max_workers=14) as ex:
+        with ThreadPoolExecutor(max_workers=6) as ex:
             res = list(ex.map(job, BAND_ASSETS + ["scl"]))
         scl = res[-1]
         bands, valid = [], np.ones_like(scl, dtype=bool)
