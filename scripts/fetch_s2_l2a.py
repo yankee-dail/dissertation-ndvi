@@ -112,6 +112,48 @@ def read_asset(href, boxes, px, resampling, scale_offset, attempts=6):
     return np.clip(np.round(refl * 10000), 0, 65535).astype(np.uint16), valid
 
 
+def write_date(t, d, it, all_boxes, region_dir, epsg, px, res):
+    """Читає 13 каналів + SCL для всіх фрагментів однієї дати й пише S2/CLD tif.
+    all_boxes: [(zone, k, (x0, y0, x1, y1) у метрах UTM epsg)]. Повертає масив хмарності або None (уже є)."""
+    def path(kind, zn, k):
+        return region_dir / "zones" / zn / kind / str(t) / f"s2_l2a_{zn}_ImgNo_{t}_{d}_patch_{k:04d}.tif"
+    if all(path("CLD", zn, k).exists() for zn, k, _ in all_boxes):
+        return None
+    boxes = [b for _, _, b in all_boxes]
+
+    def job(asset):
+        if asset is None:
+            return None
+        a = it["assets"][asset]
+        rb = (a.get("raster:bands") or [{}])[0]
+        rs = Resampling.average if rb.get("spatial_resolution", 20) < res else Resampling.nearest
+        if asset == "scl":
+            return read_asset(a["href"], boxes, px, Resampling.nearest, None)
+        return read_asset(a["href"], boxes, px, rs, (rb.get("scale", 1e-4), rb.get("offset", 0.0)))
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        out = list(ex.map(job, BAND_ASSETS + ["scl"]))
+    scl = out[-1]
+    bands, valid = [], np.ones_like(scl, dtype=bool)
+    for r in out[:-1]:
+        if r is None:
+            bands.append(np.zeros_like(scl, dtype=np.uint16))
+        else:
+            bands.append(r[0])
+            valid &= r[1]
+    stack = np.stack(bands, axis=1)  # (N, 13, px, px)
+    cloud = (np.isin(scl, CLOUDY_SCL) | ~valid).astype(np.uint8) * 100
+    for i, (zn, k, (x, y, x2, y2)) in enumerate(all_boxes):
+        prof = dict(driver="GTiff", width=px, height=px, crs=f"EPSG:{epsg}",
+                    transform=from_origin(x, y2, res, res), compress="deflate")
+        for kind, arr, dtype, pred in (("S2", stack[i], "uint16", 2), ("CLD", cloud[i][None], "uint8", 1)):
+            pth = path(kind, zn, k)
+            pth.parent.mkdir(parents=True, exist_ok=True)
+            with rasterio.open(pth, "w", count=arr.shape[0], dtype=dtype, predictor=pred, **prof) as dst:
+                dst.write(arr)
+    return cloud
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--zones", required=True, help="JSON: {zone: {bbox: [lon0,lat0,lon1,lat1], n: patches}}")
@@ -163,48 +205,12 @@ def main():
 
     all_boxes = [(zn, k, (x, y, x + args.patch_m, y + args.patch_m))
                  for zn in cells for k, (x, y) in enumerate(cells[zn])]
-    boxes = [b for _, _, b in all_boxes]
 
     for t, (d, it) in enumerate(dates):
-        def path(kind, zn, k):
-            return region_dir / "zones" / zn / kind / str(t) / f"s2_l2a_{zn}_ImgNo_{t}_{d}_patch_{k:04d}.tif"
-        if all(path("CLD", zn, k).exists() for zn, k, _ in all_boxes):
-            continue
-
-        def job(asset):
-            if asset is None:
-                return None
-            a = it["assets"][asset]
-            rb = (a.get("raster:bands") or [{}])[0]
-            res_a = rb.get("spatial_resolution", 20)
-            rs = Resampling.average if res_a < args.res else Resampling.nearest
-            if asset == "scl":
-                return read_asset(a["href"], boxes, px, Resampling.nearest, None)
-            return read_asset(a["href"], boxes, px, rs, (rb.get("scale", 1e-4), rb.get("offset", 0.0)))
-
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            res = list(ex.map(job, BAND_ASSETS + ["scl"]))
-        scl = res[-1]
-        bands, valid = [], np.ones_like(scl, dtype=bool)
-        for r in res[:-1]:
-            if r is None:
-                bands.append(np.zeros_like(scl, dtype=np.uint16))
-            else:
-                bands.append(r[0])
-                valid &= r[1]
-        stack = np.stack(bands, axis=1)  # (N, 13, px, px)
-        cloud = (np.isin(scl, CLOUDY_SCL) | ~valid).astype(np.uint8) * 100
-
-        for i, (zn, k, (x, y, x2, y2)) in enumerate(all_boxes):
-            prof = dict(driver="GTiff", width=px, height=px, crs=f"EPSG:{epsg}",
-                        transform=from_origin(x, y2, args.res, args.res), compress="deflate")
-            for kind, arr, dtype, pred in (("S2", stack[i], "uint16", 2), ("CLD", cloud[i][None], "uint8", 1)):
-                p = path(kind, zn, k)
-                p.parent.mkdir(parents=True, exist_ok=True)
-                with rasterio.open(p, "w", count=arr.shape[0], dtype=dtype, predictor=pred, **prof) as dst:
-                    dst.write(arr)
-        print(f"[{t + 1}/{len(dates)}] {d}  хмарність сцени {it['properties'].get('eo:cloud_cover', -1):.0f}%  "
-              f"частка хмари у фрагментах {cloud.mean() / 100:.2f}", flush=True)
+        cloud = write_date(t, d, it, all_boxes, region_dir, epsg, px, args.res)
+        if cloud is not None:
+            print(f"[{t + 1}/{len(dates)}] {d}  хмарність сцени {it['properties'].get('eo:cloud_cover', -1):.0f}%  "
+                  f"частка хмари у фрагментах {cloud.mean() / 100:.2f}", flush=True)
     print("Готово:", region_dir)
 
 

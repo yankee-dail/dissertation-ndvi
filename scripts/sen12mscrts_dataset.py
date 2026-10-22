@@ -98,7 +98,7 @@ class SEN12MSCRTSPatchDataset(Dataset):
                  target_mode="random_clean", target_max_cloud=0.3, seed=0, img_size=None,
                  s1_root=None, era5_path=None, ref_mode="prior_clean", ref_cache_dir=None,
                  near_mode="nearest", samples_per_patch=1,
-                 ref_select="clearest", ref_max_cloud=0.1):
+                 ref_select="clearest", ref_max_cloud=0.1, forced_targets=None):
         """s1_root: директорія з тією самою структурою <roi_dir>/<roi>/S1/<tdx>/*.tif -
         якщо задано, до x додається VV/VH (ref і near кадри, 2x2=4 канали). S1 НІКОЛИ не
         йде в ціль - лише як додатковий вхід (радар не замінює оптичну ground truth).
@@ -132,6 +132,9 @@ class SEN12MSCRTSPatchDataset(Dataset):
         # clearest - найчистіший серед попередніх (історична поведінка, на щільних рядах може
         # бути піврічної давності); latest_clean - найпізніший попередній з хмарністю <= ref_max_cloud.
         self.ref_select, self.ref_max_cloud = ref_select, ref_max_cloud
+        # {pdx: tdx} - примусова цільова дата (напр. перший чистий знімок після події граду);
+        # опорне значення й найближчий кадр далі обираються звичайною логікою режимів.
+        self.forced_targets = forced_targets or {}
         self.ref_cache_dir = Path(ref_cache_dir) if ref_cache_dir is not None else None
         if self.ref_cache_dir is not None:
             self.ref_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -192,7 +195,9 @@ class SEN12MSCRTSPatchDataset(Dataset):
         rng = np.random.default_rng(self.seed + pdx + 100003 * j)
         if used and (np.delete(frac, list(used)) <= self.target_max_cloud).any():
             frac[list(used)] = np.inf
-        if self.near_mode == "prior":
+        if pdx in self.forced_targets:
+            target_idx = int(self.forced_targets[pdx])
+        elif self.near_mode == "prior":
             # Причинний режим: ціль, перед якою немає жодного кадру, неможливо прогнозувати з минулого.
             frac_sel = np.where(t_days > t_days.min(), frac, np.inf)
             target_idx = pick_target_idx(frac_sel, rng, self.target_max_cloud, self.target_mode)
