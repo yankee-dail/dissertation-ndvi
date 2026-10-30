@@ -61,10 +61,14 @@ class UNetTrunk(nn.Module):
 class ResidualUNet(nn.Module):
     """Крок 2: ŷ = y_ref + Δθ(x), лише детермінована поправка."""
 
-    def __init__(self, in_ch, out_ch, base=24):
+    def __init__(self, in_ch, out_ch, base=24, zero_init=False):
         super().__init__()
         self.trunk = UNetTrunk(in_ch, base)
         self.out = nn.Conv2d(base, out_ch, 1)
+        if zero_init:
+            # Розд. 2.4: Δθ ≡ 0 на старті, тож модель починає рівно з рівня базового методу.
+            nn.init.zeros_(self.out.weight)
+            nn.init.zeros_(self.out.bias)
 
     def forward(self, x):
         return self.out(self.trunk(x))  # residual Δ, без активації (може бути +/-)

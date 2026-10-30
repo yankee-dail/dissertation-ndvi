@@ -240,6 +240,8 @@ def main():
                      help="y_ref серед попередніх: найчистіший (історично) або найпізніший чистий (≤10%% хмар)")
     ap.add_argument("--samples-per-patch", type=int, default=1,
                      help="скільки різних цільових дат брати з кожного фрагмента (для щільних L2A-рядів)")
+    ap.add_argument("--zero-init-delta", action="store_true",
+                     help="нульова ініціалізація останнього шару: Δθ ≡ 0 на старті (розд. 2.4)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_prototype")
     ap.add_argument("--n-boot", type=int, default=2000)
@@ -283,7 +285,8 @@ def main():
         threshold_specs = args.phen_threshold_roi if args.phen_threshold_roi else args.train_roi
         rate_lo, rate_hi = compute_ndvi_rate_bounds(args.root, threshold_specs, era5_root=args.era5_root)
 
-    model = ResidualUNet(in_ch=n_input_channels(include_s1=args.use_s1), out_ch=n_bands()).to(device)
+    model = ResidualUNet(in_ch=n_input_channels(include_s1=args.use_s1), out_ch=n_bands(),
+                         zero_init=args.zero_init_delta).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.L1Loss()
 
