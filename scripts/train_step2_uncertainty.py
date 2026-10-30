@@ -126,6 +126,8 @@ def main():
     ap.add_argument("--near-mode", default="nearest", choices=["nearest", "prior"])
     ap.add_argument("--samples-per-patch", type=int, default=1)
     ap.add_argument("--ref-select", default="clearest", choices=["clearest", "latest_clean"])
+    ap.add_argument("--init-from-step2", default=None,
+                     help="model.pt ResidualUNet кроку 2: взяти з нього μ і навчати лише σ-голову")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="results/step2_uncertainty")
     args = ap.parse_args()
@@ -160,7 +162,16 @@ def main():
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
 
     model = ResidualUNetUncertainty(in_ch=n_input_channels(), out_ch=n_bands()).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.init_from_step2:
+        # μ береться з готової L1-моделі кроку 2 і не змінюється: стовбур і Δ-голова заморожені,
+        # навчається лише log σ - тоді σ оцінена саме для того μ, яке отримує користувач.
+        step2 = torch.load(args.init_from_step2, map_location=device)
+        model.trunk.load_state_dict({k[len("trunk."):]: v for k, v in step2.items() if k.startswith("trunk.")})
+        model.delta_head.load_state_dict({k[len("out."):]: v for k, v in step2.items() if k.startswith("out.")})
+        for p in list(model.trunk.parameters()) + list(model.delta_head.parameters()):
+            p.requires_grad_(False)
+        print(f"μ із {args.init_from_step2} (заморожено), навчається лише log σ")
+    optimizer = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=args.lr)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -168,6 +179,8 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         model.train()
+        if args.init_from_step2:
+            model.trunk.eval()  # BatchNorm замороженого стовбура не оновлює статистики, μ лишається тим самим
         train_losses = []
         for x, y_ref, target, _, ref_days in train_loader:
             x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
