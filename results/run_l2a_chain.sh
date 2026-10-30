@@ -11,7 +11,7 @@ experiments() {
   RS="--ref-select ${REFSEL:-clearest}"
   Z=$region/zones
   mkdir -p $out
-  for s in 0 1 2; do
+  for s in ${SEEDS:-0 1 2}; do
     [ -f $out/step2_causal_seed$s/model.pt ] || \
       $P scripts/train_step2.py --root data/l2a --train-roi $Z/train --val-roi $Z/val --test-roi $Z/test \
         --epochs 10 --img-size 128 --seed $s --near-mode prior --samples-per-patch $SPP $RS \
