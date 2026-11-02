@@ -1,0 +1,554 @@
+{
+  "argmin": {
+    "all": {
+      "n": 1826,
+      "n_risk": 1826,
+      "share_risk": 1.0,
+      "full": {
+        "least_cloudy_raw": {
+          "rmse": 0.0,
+          "sam_deg": 0.005738196153191672
+        },
+        "least_cloudy_strict": {
+          "rmse": 0.0403934264280665,
+          "sam_deg": 8.290904474121326
+        },
+        "linear_interp": {
+          "rmse": 0.049169395406611124,
+          "sam_deg": 8.261542713067618
+        }
+      },
+      "leak_free": null,
+      "full_rmse_interp-raw": [
+        0.04915401399136533,
+        0.04785183237744179,
+        0.05047486649492989
+      ]
+    },
+    "per_roi": {
+      "s2_america_test/ROIs1158/106": {
+        "n": 238,
+        "n_risk": 238,
+        "share_risk": 1.0,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.0,
+            "sam_deg": 0.00533859187760586
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.04176868353931218,
+            "sam_deg": 5.484018880780003
+          },
+          "linear_interp": {
+            "rmse": 0.0472736836121488,
+            "sam_deg": 5.34109305734394
+          }
+        },
+        "leak_free": null,
+        "full_rmse_interp-raw": [
+          0.04724378981753135,
+          0.042660791979723084,
+          0.051855998827602334
+        ]
+      },
+      "s2_america_test/ROIs1970/132": {
+        "n": 270,
+        "n_risk": 270,
+        "share_risk": 1.0,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.0,
+            "sam_deg": 0.005583943047181324
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.04819083835722671,
+            "sam_deg": 10.340305390181365
+          },
+          "linear_interp": {
+            "rmse": 0.051477551305045686,
+            "sam_deg": 8.977061427964104
+          }
+        },
+        "leak_free": null,
+        "full_rmse_interp-raw": [
+          0.051526996973877845,
+          0.04892318571452051,
+          0.05422647143610649
+        ]
+      },
+      "s2_africa_test/ROIs2017/32": {
+        "n": 238,
+        "n_risk": 238,
+        "share_risk": 1.0,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.0,
+            "sam_deg": 0.005527020455533717
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.04174287111631462,
+            "sam_deg": 10.046779119667887
+          },
+          "linear_interp": {
+            "rmse": 0.07039611854692217,
+            "sam_deg": 12.348697012212096
+          }
+        },
+        "leak_free": null,
+        "full_rmse_interp-raw": [
+          0.07040863961992519,
+          0.066560403956296,
+          0.074390499841054
+        ]
+      },
+      "s2_africa_test/ROIs2017/140": {
+        "n": 270,
+        "n_risk": 270,
+        "share_risk": 1.0,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.0,
+            "sam_deg": 0.005627458806460103
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.052613348331026454,
+            "sam_deg": 9.66571235369753
+          },
+          "linear_interp": {
+            "rmse": 0.05127100402972212,
+            "sam_deg": 7.87710151274999
+          }
+        },
+        "leak_free": null,
+        "full_rmse_interp-raw": [
+          0.051300291239986785,
+          0.04777820718267726,
+          0.05491354684414411
+        ]
+      },
+      "s2_asiaEast_test/ROIs1868/73": {
+        "n": 240,
+        "n_risk": 240,
+        "share_risk": 1.0,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.0,
+            "sam_deg": 0.006247176427859813
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.029669953112412866,
+            "sam_deg": 7.759781438112259
+          },
+          "linear_interp": {
+            "rmse": 0.06038527525573348,
+            "sam_deg": 9.904028836886088
+          }
+        },
+        "leak_free": null,
+        "full_rmse_interp-raw": [
+          0.06037413338816065,
+          0.057975202236363356,
+          0.06277580402306436
+        ]
+      },
+      "s2_asiaEast_test/ROIs1868/119": {
+        "n": 300,
+        "n_risk": 300,
+        "share_risk": 1.0,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.0,
+            "sam_deg": 0.005654733868626257
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.037829030379652975,
+            "sam_deg": 6.755143025716146
+          },
+          "linear_interp": {
+            "rmse": 0.039996238608534136,
+            "sam_deg": 6.432482542991639
+          }
+        },
+        "leak_free": null,
+        "full_rmse_interp-raw": [
+          0.04000972625462183,
+          0.037890308665034046,
+          0.04221446273010224
+        ]
+      },
+      "s2_asiaEast_test/ROIs1970/139": {
+        "n": 270,
+        "n_risk": 270,
+        "share_risk": 1.0,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.0,
+            "sam_deg": 0.006181886802530951
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.030355623640395978,
+            "sam_deg": 7.9716533404809455
+          },
+          "linear_interp": {
+            "rmse": 0.027942427830701624,
+            "sam_deg": 7.4743380732006495
+          }
+        },
+        "leak_free": null,
+        "full_rmse_interp-raw": [
+          0.027937569250628628,
+          0.02687406854350465,
+          0.02904355923610705
+        ]
+      }
+    }
+  },
+  "random_clean": {
+    "all": {
+      "n": 1826,
+      "n_risk": 99,
+      "share_risk": 0.054216867469879526,
+      "full": {
+        "least_cloudy_raw": {
+          "rmse": 0.05697275936552515,
+          "sam_deg": 10.041381409681364
+        },
+        "least_cloudy_strict": {
+          "rmse": 0.05949734087676218,
+          "sam_deg": 10.537922798836068
+        },
+        "linear_interp": {
+          "rmse": 0.04437193116862072,
+          "sam_deg": 6.74614345521143
+        }
+      },
+      "leak_free": {
+        "least_cloudy_raw": {
+          "rmse": 0.06024060593399965,
+          "sam_deg": 10.617004960257374
+        },
+        "least_cloudy_strict": {
+          "rmse": 0.06024060593399965,
+          "sam_deg": 10.617004960257374
+        },
+        "linear_interp": {
+          "rmse": 0.04376192698319931,
+          "sam_deg": 6.606435010600339
+        }
+      },
+      "leak_free_rmse_interp-strict": [
+        -0.016478468991255348,
+        -0.01793784461691566,
+        -0.015070775173176735
+      ],
+      "full_rmse_interp-raw": [
+        -0.01259121456029608,
+        -0.014209686150611696,
+        -0.01103437618984624
+      ]
+    },
+    "per_roi": {
+      "s2_america_test/ROIs1158/106": {
+        "n": 238,
+        "n_risk": 8,
+        "share_risk": 0.03361344537815125,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.05868185094377699,
+            "sam_deg": 6.703265868064736
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.06025070031447446,
+            "sam_deg": 6.899434952675795
+          },
+          "linear_interp": {
+            "rmse": 0.02680528929218368,
+            "sam_deg": 2.9517247999916556
+          }
+        },
+        "leak_free": {
+          "least_cloudy_raw": {
+            "rmse": 0.06072295880269097,
+            "sam_deg": 6.936232213352038
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.06072295880269097,
+            "sam_deg": 6.936232213352038
+          },
+          "linear_interp": {
+            "rmse": 0.025558683878499206,
+            "sam_deg": 2.8196561888508174
+          }
+        },
+        "leak_free_rmse_interp-strict": [
+          -0.0352319176970075,
+          -0.04023002489277607,
+          -0.030415292916156397
+        ],
+        "full_rmse_interp-raw": [
+          -0.031932999387959175,
+          -0.0370445807818069,
+          -0.026579876302349176
+        ]
+      },
+      "s2_america_test/ROIs1970/132": {
+        "n": 270,
+        "n_risk": 18,
+        "share_risk": 0.06666666666666665,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.06290639862833634,
+            "sam_deg": 11.95959463847808
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.06628528469307937,
+            "sam_deg": 12.676770343213276
+          },
+          "linear_interp": {
+            "rmse": 0.0494727227788377,
+            "sam_deg": 7.978516185150713
+          }
+        },
+        "leak_free": {
+          "least_cloudy_raw": {
+            "rmse": 0.067417614466225,
+            "sam_deg": 12.81684808617094
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.067417614466225,
+            "sam_deg": 12.81684808617094
+          },
+          "linear_interp": {
+            "rmse": 0.049141195602715015,
+            "sam_deg": 7.909019346731117
+          }
+        },
+        "leak_free_rmse_interp-strict": [
+          -0.01830470825764035,
+          -0.022439664642723553,
+          -0.014298248080169391
+        ],
+        "full_rmse_interp-raw": [
+          -0.013517997707448014,
+          -0.017728732430400348,
+          -0.009182906725277717
+        ]
+      },
+      "s2_africa_test/ROIs2017/32": {
+        "n": 238,
+        "n_risk": 17,
+        "share_risk": 0.0714285714285714,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.047929264088513474,
+            "sam_deg": 10.13278858548132
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.051181521153218355,
+            "sam_deg": 10.86901853865936
+          },
+          "linear_interp": {
+            "rmse": 0.053876140068809523,
+            "sam_deg": 8.938209511151834
+          }
+        },
+        "leak_free": {
+          "least_cloudy_raw": {
+            "rmse": 0.05161613055686066,
+            "sam_deg": 10.911805547740125
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.05161613055686066,
+            "sam_deg": 10.911805547740125
+          },
+          "linear_interp": {
+            "rmse": 0.0522895001161557,
+            "sam_deg": 8.629807163147905
+          }
+        },
+        "leak_free_rmse_interp-strict": [
+          0.0007016820600772556,
+          -0.0019226550227305086,
+          0.0033283722368321854
+        ],
+        "full_rmse_interp-raw": [
+          0.005966044109395877,
+          0.002583165971431176,
+          0.009900604620010457
+        ]
+      },
+      "s2_africa_test/ROIs2017/140": {
+        "n": 270,
+        "n_risk": 17,
+        "share_risk": 0.062962962962963,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.06875406781349469,
+            "sam_deg": 10.765127505256828
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.07339595041962134,
+            "sam_deg": 11.565983423038766
+          },
+          "linear_interp": {
+            "rmse": 0.045564450696110724,
+            "sam_deg": 6.797360796840103
+          }
+        },
+        "leak_free": {
+          "least_cloudy_raw": {
+            "rmse": 0.07337390636222754,
+            "sam_deg": 11.488092515308395
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.07337390636222754,
+            "sam_deg": 11.488092515308395
+          },
+          "linear_interp": {
+            "rmse": 0.044284242613925766,
+            "sam_deg": 6.548703874523932
+          }
+        },
+        "leak_free_rmse_interp-strict": [
+          -0.02911304396859429,
+          -0.0327788081373504,
+          -0.02540291236509227
+        ],
+        "full_rmse_interp-raw": [
+          -0.023184984607609954,
+          -0.02774480023266127,
+          -0.018661060919036607
+        ]
+      },
+      "s2_asiaEast_test/ROIs1868/73": {
+        "n": 240,
+        "n_risk": 12,
+        "share_risk": 0.050000000000000044,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.043074490323973195,
+            "sam_deg": 8.633646680618403
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.044461676649128395,
+            "sam_deg": 8.96923221151034
+          },
+          "linear_interp": {
+            "rmse": 0.03916961335829304,
+            "sam_deg": 5.667187155286471
+          }
+        },
+        "leak_free": {
+          "least_cloudy_raw": {
+            "rmse": 0.04534156876207705,
+            "sam_deg": 9.087714908415812
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.04534156876207705,
+            "sam_deg": 9.087714908415812
+          },
+          "linear_interp": {
+            "rmse": 0.03833423130185621,
+            "sam_deg": 5.4796043090653
+          }
+        },
+        "leak_free_rmse_interp-strict": [
+          -0.006987740796396362,
+          -0.009643257889675029,
+          -0.00431080748957149
+        ],
+        "full_rmse_interp-raw": [
+          -0.0038782511677534783,
+          -0.006999579078280173,
+          -0.0007281882335761714
+        ]
+      },
+      "s2_asiaEast_test/ROIs1868/119": {
+        "n": 300,
+        "n_risk": 15,
+        "share_risk": 0.050000000000000044,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.0558771701871107,
+            "sam_deg": 10.095445058677967
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.057889919029548764,
+            "sam_deg": 10.419575168291727
+          },
+          "linear_interp": {
+            "rmse": 0.04608384129901727,
+            "sam_deg": 7.214426906506221
+          }
+        },
+        "leak_free": {
+          "least_cloudy_raw": {
+            "rmse": 0.05881807388116916,
+            "sam_deg": 10.626499289797064
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.05881807388116916,
+            "sam_deg": 10.626499289797064
+          },
+          "linear_interp": {
+            "rmse": 0.04637038794003035,
+            "sam_deg": 7.256114775256107
+          }
+        },
+        "leak_free_rmse_interp-strict": [
+          -0.012472441324503408,
+          -0.015376722476069344,
+          -0.009643353505729976
+        ],
+        "full_rmse_interp-raw": [
+          -0.00978534520616134,
+          -0.012867180799366907,
+          -0.006727538979224236
+        ]
+      },
+      "s2_asiaEast_test/ROIs1970/139": {
+        "n": 270,
+        "n_risk": 12,
+        "share_risk": 0.0444444444444444,
+        "full": {
+          "least_cloudy_raw": {
+            "rmse": 0.059316267369797934,
+            "sam_deg": 11.459688917047309
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.060653155890327916,
+            "sam_deg": 11.820230182011922
+          },
+          "linear_interp": {
+            "rmse": 0.04792655734690251,
+            "sam_deg": 7.31831919087304
+          }
+        },
+        "leak_free": {
+          "least_cloudy_raw": {
+            "rmse": 0.06207516352653272,
+            "sam_deg": 11.992405246394549
+          },
+          "least_cloudy_strict": {
+            "rmse": 0.06207516352653272,
+            "sam_deg": 11.992405246394549
+          },
+          "linear_interp": {
+            "rmse": 0.04885461386798542,
+            "sam_deg": 7.316550744596378
+          }
+        },
+        "leak_free_rmse_interp-strict": [
+          -0.013195139091243504,
+          -0.01624967875085453,
+          -0.010215799802780704
+        ],
+        "full_rmse_interp-raw": [
+          -0.011440533614531158,
+          -0.01451281743063764,
+          -0.008416279123026742
+        ]
+      }
+    }
+  }
+}
