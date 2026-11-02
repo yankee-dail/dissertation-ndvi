@@ -104,7 +104,7 @@ def main():
         if os.path.isdir(f"{raw}/{name}"):
             print(f"{name} вже розпаковано - пропускаю")
             continue
-        run(f'curl --fail --show-error -o {name}.tar.gz "ftp://m1659251:m1659251@dataserv.ub.tum.de/{name}.tar.gz"',
+        run(f'curl --fail --silent --show-error -o {name}.tar.gz "ftp://m1659251:m1659251@dataserv.ub.tum.de/{name}.tar.gz"',
             cwd=raw, retries=6)
         run(f'echo "{sha}  {name}.tar.gz" | shasum -a 512 -c -', cwd=raw)
         run(f"tar -xzf {name}.tar.gz && rm {name}.tar.gz", cwd=raw)
