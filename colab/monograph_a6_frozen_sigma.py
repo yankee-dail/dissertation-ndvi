@@ -2,7 +2,7 @@
 Експеримент A6 (монографія, розд. 6.6): σ-голова поверх ЗАМОРОЖЕНОЇ залишкової моделі з y_ref = лінійна
 інтерполяція (results/step2_interp_gpu_256_seed*). μ не змінюється, навчається лише log σ, тож σ оцінена
 саме для того μ, яке отримує користувач. GPU, 256x256, 20 епох (вчиться лише 1x1-голова), 5 seed;
-калібрування asiaEast/139, тест america/132 - як у results/uncertainty_gpu_256_seed*.
+вибір епохи asiaEast/119 (не калібрувальна ділянка), калібрування asiaEast/139, тест america/132.
 
 ВИКОРИСТАННЯ в Colab (GPU-рантайм T4), після monograph_a0_zeroinit.py або в окремій сесії:
     1. Клітинка:  import os; from google.colab import userdata
@@ -118,6 +118,7 @@ def main():
         run("python scripts/train_step2_uncertainty.py --root data/raw "
             "--train-roi s2_america_test/ROIs1158/106 --train-roi s2_africa_test/ROIs2017/32 "
             "--train-roi s2_africa_test/ROIs2017/140 --train-roi s2_asiaEast_test/ROIs1868/73 "
+            "--select-roi s2_asiaEast_test/ROIs1868/119 "
             "--calib-roi s2_asiaEast_test/ROIs1970/139 --test-roi s2_america_test/ROIs1970/132 "
             f"--epochs 20 --img-size 256 --batch-size 8 --coverage 0.9 --seed {seed} "
             "--ref-mode linear_interp --ref-cache-dir data/ref_cache "

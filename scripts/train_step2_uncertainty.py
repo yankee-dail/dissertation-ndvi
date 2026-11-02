@@ -114,6 +114,9 @@ def main():
     ap.add_argument("--train-roi", action="append", required=True)
     ap.add_argument("--calib-roi", action="append", required=True, help="ROI лише для підбору q, інший за train/test")
     ap.add_argument("--test-roi", action="append", required=True, help="ROI лише для звіту про покриття")
+    ap.add_argument("--select-roi", action="append", default=None,
+                    help="ROI для вибору епохи за NLL; без нього епоху обирають на calib-roi, і тоді σ "
+                         "залежить від калібрувальних даних (умова незалежності розщепленого калібрування порушена)")
     ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -132,9 +135,10 @@ def main():
     ap.add_argument("--out", default="results/step2_uncertainty")
     args = ap.parse_args()
 
-    all_specs = set(args.train_roi) | set(args.calib_roi) | set(args.test_roi)
-    if len(all_specs) != len(args.train_roi) + len(args.calib_roi) + len(args.test_roi):
-        sys.exit("train-roi / calib-roi / test-roi перетинаються - калібрування й оцінка будуть нечесними")
+    select_rois = args.select_roi or []
+    all_specs = set(args.train_roi) | set(args.calib_roi) | set(args.test_roi) | set(select_rois)
+    if len(all_specs) != len(args.train_roi) + len(args.calib_roi) + len(args.test_roi) + len(select_rois):
+        sys.exit("train-roi / select-roi / calib-roi / test-roi перетинаються - калібрування й оцінка будуть нечесними")
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -155,11 +159,21 @@ def main():
                               ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
                               near_mode=args.near_mode, samples_per_patch=args.samples_per_patch,
                               ref_select=args.ref_select)
+    if select_rois:
+        print("Select ROI (лише вибір епохи):")
+        select_ds = build_dataset(args.root, select_rois, args.img_size, args.target_mode, args.target_max_cloud,
+                                  args.seed, ref_mode=args.ref_mode, ref_cache_dir=args.ref_cache_dir,
+                                  near_mode=args.near_mode, samples_per_patch=args.samples_per_patch,
+                                  ref_select=args.ref_select)
+    else:
+        select_ds = calib_ds
     print(f"Разом: train={len(train_ds)}, calib={len(calib_ds)}, test={len(test_ds)}")
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     calib_loader = DataLoader(calib_ds, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
+    select_loader = calib_loader if select_ds is calib_ds else DataLoader(select_ds, batch_size=args.batch_size,
+                                                                          shuffle=False)
 
     model = ResidualUNetUncertainty(in_ch=n_input_channels(), out_ch=n_bands()).to(device)
     if args.init_from_step2:
@@ -194,7 +208,7 @@ def main():
         model.eval()
         calib_losses = []
         with torch.no_grad():
-            for x, y_ref, target, _, _ in calib_loader:
+            for x, y_ref, target, _, _ in select_loader:
                 x, y_ref, target = x.to(device), y_ref.to(device), target.to(device)
                 delta, log_sigma = model(x)
                 calib_losses.append(gaussian_nll(delta, log_sigma, y_ref, target).item())
@@ -231,7 +245,8 @@ def main():
         f"Train ROI: {', '.join(args.train_roi)} ({len(train_ds)} патчів).",
         f"Calib ROI: {', '.join(args.calib_roi)} ({len(calib_ds)} патчів) - лише для підбору q.",
         f"Test ROI: {', '.join(args.test_roi)} ({len(test_ds)} патчів) - лише для звіту про покриття.",
-        f"Усі три - різні географічні локації. Найкраща епоха за calib NLL: {best_epoch}.",
+        f"Усі три - різні географічні локації. Найкраща епоха за NLL на "
+        f"{', '.join(select_rois) if select_rois else 'calib-ROI (σ залежить від калібрувальних даних)'}: {best_epoch}.",
         "",
         f"Номінальне покриття: {args.coverage:.0%}. Конформний множник q = {q:.3f}.",
         f"**Фактичне покриття на test ROI: {test_coverage:.1%}** (ціль: {args.coverage:.0%}). "
