@@ -50,8 +50,10 @@ def run_seed(seed, args, device):
                   max_patches_per_roi=args.max_patches)
 
     def pair(spec):
-        return (build_dataset(args.root, [spec], ref_mode="linear_interp", **common),
-                build_dataset(args.root, [spec], ref_mode="prior_clean", **common))
+        mu_ds = build_dataset(args.root, [spec], ref_mode="linear_interp", **common)
+        if args.unc_ref_mode == "linear_interp":  # σ-голова поверх тієї самої моделі (A6): той самий вхід
+            return mu_ds, mu_ds
+        return mu_ds, build_dataset(args.root, [spec], ref_mode=args.unc_ref_mode, **common)
 
     calib, calib_u = pair(args.calib_roi)
     sq = StreamingQuantile()
@@ -124,6 +126,8 @@ def main():
     ap.add_argument("--test-roi", default=TEST_ROI)
     ap.add_argument("--step2-model", default="results/step2_interp_gpu_256_seed{seed}/model.pt")
     ap.add_argument("--uncertainty-model", default="results/uncertainty_gpu_256_seed{seed}/model.pt")
+    ap.add_argument("--unc-ref-mode", default="prior_clean", choices=["prior_clean", "linear_interp"],
+                    help="y_ref, з яким навчено σ-модель; linear_interp - для σ-голови поверх замороженої моделі (A6)")
     ap.add_argument("--ref-cache-dir", default="data/ref_cache")
     ap.add_argument("--n-boot", type=int, default=2000)
     ap.add_argument("--max-patches", type=int, default=None, help="лише для швидкої перевірки")
