@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite it as below."
+title: "Sentinel-2 reconstruction with calibrated uncertainty for crop monitoring: code and results"
+authors:
+  - family-names: Baluk
+    given-names: Sviatoslav
+license: MIT
+repository-code: "https://github.com/yankee-dail/dissertation-ndvi"
