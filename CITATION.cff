@@ -4,5 +4,7 @@ title: "Sentinel-2 reconstruction with calibrated uncertainty for crop monitorin
 authors:
   - family-names: Baluk
     given-names: Sviatoslav
+  - family-names: Antoniv
+    given-names: V. Ya.
 license: MIT
 repository-code: "https://github.com/yankee-dail/dissertation-ndvi"
