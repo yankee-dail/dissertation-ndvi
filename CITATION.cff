@@ -4,7 +4,11 @@ title: "Sentinel-2 reconstruction with calibrated uncertainty for crop monitorin
 authors:
   - family-names: Baluk
     given-names: Sviatoslav
+    orcid: "https://orcid.org/0009-0007-5999-4547"
+    affiliation: "Lviv Polytechnic National University"
   - family-names: Antoniv
-    given-names: V. Ya.
+    given-names: Volodymyr
+    orcid: "https://orcid.org/0000-0002-4544-4612"
+    affiliation: "Lviv Polytechnic National University"
 license: MIT
 repository-code: "https://github.com/yankee-dail/dissertation-ndvi"
