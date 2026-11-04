@@ -30,6 +30,8 @@ SHA512 = {  # з checksums.sha512 на сервері TUM
 }
 USED = set()  # asiaWest/100 бралась лише для прототипу кроку 1; у навчанні, виборі епохи й калібруванні фінальних моделей її немає
 KEEP_FREE_GB = 25    # нову ділянку не починаємо, якщо на диску менше
+MAX_ROIS = {"s2_europa_test": 5}  # europa (~28 ГБ стиснено) дочитувати до кінця - години; 5 ділянок достатньо
+STALL_S = 180        # FTP мовчить довше - вважаємо обривом і починаємо архів спочатку
 
 
 def mask(text):
@@ -89,18 +91,28 @@ def stream_extract(name, raw):
         print(f"{name}: уже розпаковано", flush=True)
         return
     h = hashlib.sha512()
+    t0 = time.time()
 
     class Hashing:
+        """Рахує SHA512 і раз на хвилину друкує прогрес, щоб довге мовчання не плутати із зависанням."""
         def __init__(self, f):
-            self.f = f
+            self.f, self.n, self.last = f, 0, t0
 
         def read(self, n=-1):
             b = self.f.read(n)
             h.update(b)
+            self.n += len(b)
+            now = time.time()
+            if now - self.last > 60:
+                self.last = now
+                print(f"    {name}: прочитано {self.n / 1e9:.1f} ГБ стиснутого, "
+                      f"{self.n / 1e6 / (now - t0):.0f} МБ/с, вільно {shutil.disk_usage(raw).free / 1e9:.0f} ГБ",
+                      flush=True)
             return b
 
-    kept, skipped, cur, extract_cur = [], set(), None, False
-    with urllib.request.urlopen(f"{FTP}/{name}.tar.gz") as resp:
+    kept, skipped, cur, extract_cur, partial = [], set(), None, False, False
+    limit = MAX_ROIS.get(name)
+    with urllib.request.urlopen(f"{FTP}/{name}.tar.gz", timeout=STALL_S) as resp:
         stream = Hashing(resp)
         with tarfile.open(fileobj=stream, mode="r|gz") as tar:
             for m in tar:
@@ -109,6 +121,9 @@ def stream_extract(name, raw):
                     continue
                 roi = "/".join(parts[:3])
                 if roi != cur:
+                    if limit and len(kept) >= limit and roi not in kept:
+                        partial = True  # потрібні ділянки вже повністю розпаковані - далі не читаємо
+                        break
                     cur = roi
                     free = shutil.disk_usage(raw).free / 1e9
                     extract_cur = roi in kept or (roi not in USED and roi not in skipped and free > KEEP_FREE_GB)
@@ -119,11 +134,15 @@ def stream_extract(name, raw):
                         print(f"  розпаковую {roi} (вільно {free:.0f} ГБ)", flush=True)
                 if extract_cur:
                     tar.extract(m, raw, filter="data") if hasattr(tarfile, "data_filter") else tar.extract(m, raw)
-        while stream.read(1 << 20):  # дочитати хвіст, щоб сума була повною
+        while not partial and stream.read(1 << 20):  # дочитати хвіст, щоб сума була повною
             pass
-    if h.hexdigest() != SHA512[name]:
+    if partial:  # SHA512 рахується лише по всьому архіву; цілісність прочитаної частини перевіряє deflate
+        print(f"{name}: розпаковано {kept} (перші {limit} ділянок; SHA512 не перевірено - архів не дочитано)",
+              flush=True)
+    elif h.hexdigest() != SHA512[name]:
         sys.exit(f"{name}: SHA512 не збігається - архів пошкоджений, перезапусти клітинку")
-    print(f"{name}: SHA512 ок; розпаковано {kept}, пропущено {sorted(skipped)}", flush=True)
+    else:
+        print(f"{name}: SHA512 ок; розпаковано {kept}, пропущено {sorted(skipped)}", flush=True)
     with open(done, "w") as f:
         f.write("\n".join(kept))
 
