@@ -257,16 +257,21 @@ def summarize(done_path, out, seeds, alpha):
             bs = [diff[rng.integers(0, len(diff), len(diff))].mean() for _ in range(2000)]
             lines.append(f"| {d} | {a[:, 0].mean():.3f} | {a[:, 1].mean():.3f} | {diff.mean():+.3f} "
                          f"[{np.percentile(bs, 2.5):+.3f}; {np.percentile(bs, 97.5):+.3f}] | {(diff > 0).sum()}/{len(diff)} |")
-        lines += ["", "| Дата | Місце | Ціль (+діб) | NDRE: град / контроль | NDVI: град / контроль | ΔNDVI спостер.−прогноз: град / контроль |",
+        # Таблиця по подіях (дата, місце, координати) дозволяє відтворити сирі звіти ESWD, а угода ESSL
+        # (п. iv, ix) забороняє їх публікувати: вона йде в окремий файл, який .gitignore не пускає в репозиторій.
+        lines.append("")
+        lines.append("Джерело: European Severe Weather Database, ESSL (eswd.eu); Dotzek et al. (2009).")
+        private = ["| Дата | Місце | Ціль (+діб) | NDRE: град / контроль | NDVI: град / контроль | ΔNDVI спостер.−прогноз: град / контроль |",
                   "|---|---|---|---|---|---|"]
         for r in ok:
             s0 = r["seeds"][str(seeds[0])]
             f = lambda z, d: s0[z]["frac_flagged"][d]
             g = lambda z: s0[z]["obs_minus_pred_ndvi"]
             fmt = lambda v: "-" if v is None else f"{v:.3f}"
-            lines.append(f"| {r['date']} | {r.get('city') or ''} ({r['lat']:.3f}, {r['lon']:.3f}) | {r['target_date']} (+{r['days_after']}) | "
+            private.append(f"| {r['date']} | {r.get('city') or ''} ({r['lat']:.3f}, {r['lon']:.3f}) | {r['target_date']} (+{r['days_after']}) | "
                          f"{fmt(f('event', 'ndre'))} / {fmt(f('control', 'ndre'))} | {fmt(f('event', 'ndvi'))} / {fmt(f('control', 'ndvi'))} | "
                          f"{fmt(g('event'))} / {fmt(g('control'))} |")
+        (out / "events_private.md").write_text("\n".join(private) + "\n")
     (out / "report.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
 

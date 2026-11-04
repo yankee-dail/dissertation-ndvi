@@ -86,3 +86,9 @@ results/
 !results/paired_robustthresh_vs_step2_final/**
 !results/paired_ramp3_vs_step2_final/
 !results/paired_ramp3_vs_step2_final/**
+
+# Сирі та подієві дані ESWD: угода ESSL забороняє їх публікувати
+data/eswd/
+results/hail_validation/per_event.jsonl
+results/hail_validation/events_private.md
+**/*eswd*.json
