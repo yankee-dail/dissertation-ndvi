@@ -26,7 +26,10 @@ def main():
         sys.exit("GITHUB_TOKEN відсутній - встанови os.environ['GITHUB_TOKEN'] у клітинці ноутбука")
     remote = f"https://x-access-token:{token}@github.com/yankee-dail/dissertation-ndvi.git"
     if not os.path.isdir(f"{REPO}/.git"):
-        os.system(f"git clone -q {remote} {REPO}")
+        if os.system(f"git clone -q -b {BASE} {remote} {REPO}") != 0:
+            sys.exit("git clone впав - перевір GITHUB_TOKEN")
+    else:  # повторний запуск: допоміжний модуль лежить лише в гілці BASE, не в master
+        os.system(f"cd {REPO} && git fetch -q origin && git checkout -q origin/{BASE} -- colab/monograph_d_multiroi.py")
     sys.path.insert(0, f"{REPO}/colab")
     import monograph_d_multiroi as D  # завантаження й розпакування - як в експерименті D
 
