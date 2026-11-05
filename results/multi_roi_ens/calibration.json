@@ -1,0 +1,697 @@
+[
+  {
+    "roi": "s2_asiaWest_test/ROIs1868/100",
+    "seed": 0,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2368726886983543,
+      "coverage_region": 0.911007354319161,
+      "width_region": 0.21894821033382564,
+      "q_asiaEast": 1.1688263667843959,
+      "coverage_asiaEast": 0.9012546690576861,
+      "width_asiaEast": 0.20690281508903335
+    },
+    "ensemble": {
+      "q_region": 1.222573562023693,
+      "coverage_region": 0.9110312788243689,
+      "width_region": 0.21414527272755057
+    }
+  },
+  {
+    "roi": "s2_asiaWest_test/ROIs1868/100",
+    "seed": 1,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2749700999437144,
+      "coverage_region": 0.9116115406027127,
+      "width_region": 0.22713908635233349,
+      "q_asiaEast": 1.114871978706679,
+      "coverage_asiaEast": 0.8870916678442855,
+      "width_asiaEast": 0.19861720886978645
+    },
+    "ensemble": {
+      "q_region": 1.2189895989248674,
+      "coverage_region": 0.9149010464516678,
+      "width_region": 0.21209040953933542
+    }
+  },
+  {
+    "roi": "s2_asiaWest_test/ROIs1868/100",
+    "seed": 2,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.303241796921428,
+      "coverage_region": 0.9049751882479027,
+      "width_region": 0.22708290972061654,
+      "q_asiaEast": 1.0741130670597916,
+      "coverage_asiaEast": 0.8601674344149044,
+      "width_asiaEast": 0.1871584545654183
+    },
+    "ensemble": {
+      "q_region": 1.200673706106398,
+      "coverage_region": 0.9058000746934824,
+      "width_region": 0.20845071228185183
+    }
+  },
+  {
+    "roi": "s2_asiaWest_test/ROIs1868/100",
+    "seed": 3,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2067713749383493,
+      "coverage_region": 0.9043269373841991,
+      "width_region": 0.21478712187547136,
+      "q_asiaEast": 1.0899962404485177,
+      "coverage_asiaEast": 0.8820286983469554,
+      "width_asiaEast": 0.1940029074297373
+    },
+    "ensemble": {
+      "q_region": 1.2270859965858614,
+      "coverage_region": 0.9089570855606555,
+      "width_region": 0.2114579291430067
+    }
+  },
+  {
+    "roi": "s2_asiaWest_test/ROIs1868/100",
+    "seed": 4,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.3509055937897285,
+      "coverage_region": 0.8984334514675925,
+      "width_region": 0.22202173725438906,
+      "q_asiaEast": 1.1308369745174793,
+      "coverage_asiaEast": 0.857094816856526,
+      "width_asiaEast": 0.18585339404031495
+    },
+    "ensemble": {
+      "q_region": 1.2278632468705448,
+      "coverage_region": 0.9010312996415223,
+      "width_region": 0.21410963534229574
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1868/142",
+    "seed": 0,
+    "calib_rois": [
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2296315562215165,
+      "coverage_region": 0.8943522301241997,
+      "width_region": 0.18529345206335032,
+      "q_asiaEast": 1.1688263667843959,
+      "coverage_asiaEast": 0.8865111189773518,
+      "width_asiaEast": 0.1761307045743453
+    },
+    "ensemble": {
+      "q_region": 1.2217293297470622,
+      "coverage_region": 0.8993271448770991,
+      "width_region": 0.1945229646430354
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1868/142",
+    "seed": 1,
+    "calib_rois": [
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.266776505344636,
+      "coverage_region": 0.8937574708114745,
+      "width_region": 0.2054877098565917,
+      "q_asiaEast": 1.114871978706679,
+      "coverage_asiaEast": 0.872836479147109,
+      "width_asiaEast": 0.18084680977359618
+    },
+    "ensemble": {
+      "q_region": 1.2119926887749224,
+      "coverage_region": 0.894232121740093,
+      "width_region": 0.19358479144196997
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1868/142",
+    "seed": 2,
+    "calib_rois": [
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.3137871204493383,
+      "coverage_region": 0.9083835770196048,
+      "width_region": 0.21110920695747903,
+      "q_asiaEast": 1.0741130670597916,
+      "coverage_asiaEast": 0.8741985564580249,
+      "width_asiaEast": 0.17259657538133258
+    },
+    "ensemble": {
+      "q_region": 1.2008119467328764,
+      "coverage_region": 0.9000944683512191,
+      "width_region": 0.19181186578894455
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1868/142",
+    "seed": 3,
+    "calib_rois": [
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.207744309754604,
+      "coverage_region": 0.9007913823206105,
+      "width_region": 0.21115640094380678,
+      "q_asiaEast": 1.0899962404485177,
+      "coverage_asiaEast": 0.8828212413264097,
+      "width_asiaEast": 0.19056987585572174
+    },
+    "ensemble": {
+      "q_region": 1.2219403331467116,
+      "coverage_region": 0.8958163209244322,
+      "width_region": 0.19483579270258075
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1868/142",
+    "seed": 4,
+    "calib_rois": [
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.3630130062078274,
+      "coverage_region": 0.9088219119333071,
+      "width_region": 0.20306375976772933,
+      "q_asiaEast": 1.1308369745174793,
+      "coverage_asiaEast": 0.8763671850506011,
+      "width_asiaEast": 0.16847381990049023
+    },
+    "ensemble": {
+      "q_region": 1.2301979528874034,
+      "coverage_region": 0.9018085635921537,
+      "width_region": 0.19610656181769906
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/108",
+    "seed": 0,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2456613801138887,
+      "coverage_region": 0.9073156993149261,
+      "width_region": 0.21528607522408125,
+      "q_asiaEast": 1.1688263667843959,
+      "coverage_asiaEast": 0.8948251613979025,
+      "width_asiaEast": 0.20200677739597958
+    },
+    "ensemble": {
+      "q_region": 1.229277690737893,
+      "coverage_region": 0.905753277028171,
+      "width_region": 0.2118602194716951
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/108",
+    "seed": 1,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2344542522263744,
+      "coverage_region": 0.8659660105006061,
+      "width_region": 0.21067012136090618,
+      "q_asiaEast": 1.114871978706679,
+      "coverage_asiaEast": 0.8431690450124858,
+      "width_asiaEast": 0.19026238893212474
+    },
+    "ensemble": {
+      "q_region": 1.2144370270887364,
+      "coverage_region": 0.895958333992483,
+      "width_region": 0.20965673601018656
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/108",
+    "seed": 2,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2956121139418553,
+      "coverage_region": 0.893445640358178,
+      "width_region": 0.22553764209645882,
+      "q_asiaEast": 1.0741130670597916,
+      "coverage_asiaEast": 0.8493525360051768,
+      "width_asiaEast": 0.18697951793042036
+    },
+    "ensemble": {
+      "q_region": 1.19213379589529,
+      "coverage_region": 0.8921910211721304,
+      "width_region": 0.20658935181813018
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/108",
+    "seed": 3,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.1952259122837896,
+      "coverage_region": 0.8895220104178391,
+      "width_region": 0.20962132995823188,
+      "q_asiaEast": 1.0899962404485177,
+      "coverage_asiaEast": 0.8690723712528153,
+      "width_asiaEast": 0.19116592037040786
+    },
+    "ensemble": {
+      "q_region": 1.228358116999885,
+      "coverage_region": 0.9010775817878323,
+      "width_region": 0.21178314213037433
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/108",
+    "seed": 4,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.3576880641390932,
+      "coverage_region": 0.9053379343681538,
+      "width_region": 0.23091212935837324,
+      "q_asiaEast": 1.1308369745174793,
+      "coverage_asiaEast": 0.8623943397756401,
+      "width_asiaEast": 0.19232987358446707
+    },
+    "ensemble": {
+      "q_region": 1.230977174320752,
+      "coverage_region": 0.9025969149442719,
+      "width_region": 0.2133229967149433
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/63",
+    "seed": 0,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.252924783812503,
+      "coverage_region": 0.9126856195897043,
+      "width_region": 0.22211399343177116,
+      "q_asiaEast": 1.1688263667843959,
+      "coverage_asiaEast": 0.8982129305234386,
+      "width_asiaEast": 0.20720532893032836
+    },
+    "ensemble": {
+      "q_region": 1.23616089243571,
+      "coverage_region": 0.9111325917780159,
+      "width_region": 0.2173722351588675
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/63",
+    "seed": 1,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.3102374242319959,
+      "coverage_region": 0.9261234238234815,
+      "width_region": 0.238019110281866,
+      "q_asiaEast": 1.114871978706679,
+      "coverage_asiaEast": 0.8924188886068435,
+      "width_asiaEast": 0.2025288177106452
+    },
+    "ensemble": {
+      "q_region": 1.2428679816138934,
+      "coverage_region": 0.9195430873223112,
+      "width_region": 0.22176860416964095
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/63",
+    "seed": 2,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.3059453398866117,
+      "coverage_region": 0.9022064179114501,
+      "width_region": 0.2147964616291986,
+      "q_asiaEast": 1.0741130670597916,
+      "coverage_asiaEast": 0.8504227286764406,
+      "width_asiaEast": 0.17666565295463374
+    },
+    "ensemble": {
+      "q_region": 1.210180079967548,
+      "coverage_region": 0.9080388519203934,
+      "width_region": 0.2152468380969804
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/63",
+    "seed": 3,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2271566353670784,
+      "coverage_region": 0.9170115170101681,
+      "width_region": 0.22710017074266334,
+      "q_asiaEast": 1.0899962404485177,
+      "coverage_asiaEast": 0.8924732693663768,
+      "width_asiaEast": 0.2017169815006326
+    },
+    "ensemble": {
+      "q_region": 1.2432973271480248,
+      "coverage_region": 0.9130550099666914,
+      "width_region": 0.22358999268412846
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/63",
+    "seed": 4,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/103",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.3638763542128192,
+      "coverage_region": 0.9096304990802813,
+      "width_region": 0.2472662205025879,
+      "q_asiaEast": 1.1308369745174793,
+      "coverage_asiaEast": 0.8685780001587033,
+      "width_asiaEast": 0.20501696054031512
+    },
+    "ensemble": {
+      "q_region": 1.2360185823457215,
+      "coverage_region": 0.9064845972003481,
+      "width_region": 0.2218365516241546
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/103",
+    "seed": 0,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.2281460053839222,
+      "coverage_region": 0.893668138636957,
+      "width_region": 0.19710320097969275,
+      "q_asiaEast": 1.1688263667843959,
+      "coverage_asiaEast": 0.8825456209090079,
+      "width_asiaEast": 0.1875830864349484
+    },
+    "ensemble": {
+      "q_region": 1.2049665749234955,
+      "coverage_region": 0.886615862797133,
+      "width_region": 0.19490573935445982
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/103",
+    "seed": 1,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.276218394670982,
+      "coverage_region": 0.9008996706182335,
+      "width_region": 0.21641915406242387,
+      "q_asiaEast": 1.114871978706679,
+      "coverage_asiaEast": 0.8706529751265375,
+      "width_asiaEast": 0.18905827680207016
+    },
+    "ensemble": {
+      "q_region": 1.1948819481155375,
+      "coverage_region": 0.8810348803933443,
+      "width_region": 0.1936693332211375
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/103",
+    "seed": 2,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.279970616705182,
+      "coverage_region": 0.8823357461845802,
+      "width_region": 0.20527845521484298,
+      "q_asiaEast": 1.0741130670597916,
+      "coverage_asiaEast": 0.8359038294622814,
+      "width_asiaEast": 0.1722635412519766
+    },
+    "ensemble": {
+      "q_region": 1.19213379589529,
+      "coverage_region": 0.8931867283672852,
+      "width_region": 0.1931142536527526
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/103",
+    "seed": 3,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.1945380829338874,
+      "coverage_region": 0.8902541244744249,
+      "width_region": 0.20383275829461042,
+      "q_asiaEast": 1.0899962404485177,
+      "coverage_asiaEast": 0.8689864423825916,
+      "width_asiaEast": 0.18599402011168306
+    },
+    "ensemble": {
+      "q_region": 1.2189895989248674,
+      "coverage_region": 0.8938482329776273,
+      "width_region": 0.1976551977936706
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs2017/103",
+    "seed": 4,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs1970/20"
+    ],
+    "single": {
+      "q_region": 1.3268596887092992,
+      "coverage_region": 0.8830526640730855,
+      "width_region": 0.1984415564427275,
+      "q_asiaEast": 1.1308369745174793,
+      "coverage_asiaEast": 0.8443642426714435,
+      "width_asiaEast": 0.16912492799033127
+    },
+    "ensemble": {
+      "q_region": 1.215626055237381,
+      "coverage_region": 0.8907805309159549,
+      "width_region": 0.1971798238836217
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1970/20",
+    "seed": 0,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103"
+    ],
+    "single": {
+      "q_region": 1.2280753096516257,
+      "coverage_region": 0.8929885475018632,
+      "width_region": 0.18912058819334102,
+      "q_asiaEast": 1.1688263667843959,
+      "coverage_asiaEast": 0.8824376766277738,
+      "width_asiaEast": 0.17999639618587954
+    },
+    "ensemble": {
+      "q_region": 1.219972384435097,
+      "coverage_region": 0.8978574613313856,
+      "width_region": 0.1950778731533988
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1970/20",
+    "seed": 1,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103"
+    ],
+    "single": {
+      "q_region": 1.2898820525098407,
+      "coverage_region": 0.9114671819055992,
+      "width_region": 0.20450785915617395,
+      "q_asiaEast": 1.114871978706679,
+      "coverage_asiaEast": 0.8804139720909588,
+      "width_asiaEast": 0.176760410887856
+    },
+    "ensemble": {
+      "q_region": 1.2301271390389157,
+      "coverage_region": 0.909424864342394,
+      "width_region": 0.19644012681419068
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1970/20",
+    "seed": 2,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103"
+    ],
+    "single": {
+      "q_region": 1.3195474142640162,
+      "coverage_region": 0.9130545027319992,
+      "width_region": 0.21363214872879022,
+      "q_asiaEast": 1.0741130670597916,
+      "coverage_asiaEast": 0.8683001696072628,
+      "width_asiaEast": 0.17389680735469415
+    },
+    "ensemble": {
+      "q_region": 1.2082310712765416,
+      "coverage_region": 0.9064179567195392,
+      "width_region": 0.19356077901093127
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1970/20",
+    "seed": 3,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103"
+    ],
+    "single": {
+      "q_region": 1.2092747923924267,
+      "coverage_region": 0.902097635598674,
+      "width_region": 0.2135273451805933,
+      "q_asiaEast": 1.0899962404485177,
+      "coverage_asiaEast": 0.8786081890444276,
+      "width_asiaEast": 0.19246576952070538
+    },
+    "ensemble": {
+      "q_region": 1.223136707614607,
+      "coverage_region": 0.8967880547724884,
+      "width_region": 0.19611080042612491
+    }
+  },
+  {
+    "roi": "s2_europa_test/ROIs1970/20",
+    "seed": 4,
+    "calib_rois": [
+      "s2_europa_test/ROIs1868/142",
+      "s2_europa_test/ROIs2017/108",
+      "s2_europa_test/ROIs2017/63",
+      "s2_europa_test/ROIs2017/103"
+    ],
+    "single": {
+      "q_region": 1.3421467373834894,
+      "coverage_region": 0.8933305224604243,
+      "width_region": 0.19912186877052843,
+      "q_asiaEast": 1.1308369745174793,
+      "coverage_asiaEast": 0.8542700343791225,
+      "width_asiaEast": 0.16777179824592622
+    },
+    "ensemble": {
+      "q_region": 1.2261680623670599,
+      "coverage_region": 0.8986005862561223,
+      "width_region": 0.19641513414167186
+    }
+  }
+]
