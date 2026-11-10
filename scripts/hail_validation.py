@@ -116,6 +116,7 @@ def main():
     ap.add_argument("--target-max-cloud", type=float, default=0.3)
     ap.add_argument("--shard", type=int, default=0, help="паралельні процеси: цей бере події shard::n_shards")
     ap.add_argument("--n-shards", type=int, default=1)
+    ap.add_argument("--min-control", type=int, default=4, help="мінімум контрольних фрагментів у сцені")
     ap.add_argument("--max-pre-dates", type=int, default=6, help="скільки дат до граду читати, шукаючи чисту")
     ap.add_argument("--ctrl-km", type=float, default=18)
     ap.add_argument("--collection", default="sentinel-2-l2a")
@@ -165,19 +166,44 @@ def main():
             rec["skip"] = "немає сцен"
             done_path.open("a").write(json.dumps(rec, ensure_ascii=False) + "\n")
             continue
-        epsg = int(str(items[0]["properties"].get("proj:code", items[0]["properties"].get("proj:epsg"))).split(":")[-1])
-        items = [i for i in items if int(str(i["properties"].get("proj:code", i["properties"].get("proj:epsg"))).split(":")[-1]) == epsg]
-        boxes = layout(e["lon"], e["lat"], epsg, args.ctrl_km)
-        area = lonlat_union(boxes, epsg)
+        # Зона граду (3 × 3) мусить бути цілком у сцені; контрольні фрагменти рознесені на ~18 км і біля
+        # краю тайла частина з них випадає - такі фрагменти відкидаються (лишаються ті, що покриті щонайменше
+        # у 90 % придатних дат), а дати беруться лише ті, де покрито всі залишені фрагменти.
+        epsg_of = lambda i: int(str(i["properties"].get("proj:code", i["properties"].get("proj:epsg"))).split(":")[-1])
+        cands = {}
+        for g in {epsg_of(i) for i in items}:
+            bx = layout(e["lon"], e["lat"], g, args.ctrl_km)
+            polys = [lonlat_union([b_], g) for b_ in bx]
+            rows = []
+            for it in (i for i in items if epsg_of(i) == g):
+                fp = shape(it["geometry"])
+                cov = [fp.intersection(pp).area / pp.area >= 0.99 for pp in polys]
+                if all(c for (zn, _, _), c in zip(bx, cov) if zn == "event") and \
+                        it["properties"].get("eo:cloud_cover", 100) <= args.max_cloud:
+                    rows.append((it, cov))
+            cands[g] = (bx, rows)
+        epsg = max(cands, key=lambda g: len({r[0]["properties"]["datetime"][:10] for r in cands[g][1]}))
+        bx, rows = cands[epsg]
+        ctrl_ids = [j for j, (zn, _, _) in enumerate(bx) if zn == "control"]
+        keep = [j for j in ctrl_ids if rows and sum(r[1][j] for r in rows) >= 0.9 * len(rows)]
+        sel = [j for j, (zn, _, _) in enumerate(bx) if zn == "event"] + keep
+        boxes = [(zn, n, b_) for n, (zn, _, b_) in enumerate(bx[j] for j in sel if bx[j][0] == "event")]
+        boxes += [("control", n, bx[j][2]) for n, j in enumerate(keep)]
+        n_ctrl = len(keep)
+        rec["n_control"] = n_ctrl
         best = {}
-        for it in items:
+        for it, cov in rows:
+            if not all(cov[j] for j in sel):
+                continue
             d = it["properties"]["datetime"][:10]
-            cover = shape(it["geometry"]).intersection(area).area / area.area
-            key = (cover, -it["properties"].get("eo:cloud_cover", 100))
+            key = -it["properties"].get("eo:cloud_cover", 100)
             if d not in best or key > best[d][0]:
                 best[d] = (key, it)
-        dates = [(d, v[1]) for d, v in sorted(best.items())
-                 if v[0][0] > 0.95 and v[1]["properties"].get("eo:cloud_cover", 100) <= args.max_cloud]
+        dates = [(d, v[1]) for d, v in sorted(best.items())]
+        if n_ctrl < args.min_control:
+            rec["skip"] = f"мало контрольних фрагментів у сцені: {n_ctrl}"
+            done_path.open("a").write(json.dumps(rec, ensure_ascii=False) + "\n")
+            continue
         pre = [d for d, _ in dates if date.fromisoformat(d) < e["date"]]
         post = [d for d, _ in dates if date.fromisoformat(d) > e["date"]]
         if len(pre) < 2 or not post:
@@ -252,7 +278,7 @@ def main():
             rec["target_date"] = dates[tgt][0]
             rec["days_after"] = (date.fromisoformat(dates[tgt][0]) - e["date"]).days
             dsets = {}
-            for zn, n in (("event", 9), ("control", 8)):
+            for zn, n in (("event", 9), ("control", n_ctrl)):
                 dsets[zn] = SEN12MSCRTSPatchDataset(root=region_dir, roi_dir="zones", roi=zn, patch_indices=range(n),
                                                     img_size=PX, target_mode="random_clean", target_max_cloud=0.3,
                                                     seed=0, near_mode="prior", ref_select="latest_clean",
