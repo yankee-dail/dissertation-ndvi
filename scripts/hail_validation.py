@@ -40,7 +40,7 @@ from train_step2 import build_dataset
 from eval_protocol import CLEAN_PIXEL_THRESH
 from validation_extras import StreamingQuantile, predict
 from anomaly_detection import scores, nd, VEG_NDVI, B8, B4, B8A, B5, DETECTORS
-from fetch_s2_l2a import STAC, write_date
+from fetch_s2_l2a import BAND_ASSETS, STAC, write_date
 
 PATCH_M, RES = 2560, 20
 PX = PATCH_M // RES
@@ -151,6 +151,9 @@ def main():
         rec = {"id": e["id"], "date": str(e["date"]), "lat": e["lat"], "lon": e["lon"], "city": e.get("city")}
         start, end = e["date"] - timedelta(days=args.pre_days), e["date"] + timedelta(days=args.post_days)
         items = stac_items(e["lon"], e["lat"], start, end, args.collection)
+        # окремі сцени earth-search досі вказують на JP2 у бакеті requester-pays - лише COG
+        items = [i for i in items if all(i["assets"].get(a, {}).get("href", "").endswith(".tif")
+                                         for a in BAND_ASSETS + ["scl"] if a)]
         if not items:
             rec["skip"] = "немає сцен"
             done_path.open("a").write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -176,8 +179,25 @@ def main():
             continue
 
         region_dir = Path(args.work) / f"ev_{e['id'].replace(':', '_').replace('/', '_')[:60]}"
-        for t, (d, it) in enumerate(dates):
-            write_date(t, d, it, boxes, region_dir, epsg, PX, RES)
+        read_ok, bad = [], []
+        for d, it in dates:
+            t = len(read_ok)
+            try:
+                write_date(t, d, it, boxes, region_dir, epsg, PX, RES)
+                read_ok.append((d, it))
+            except Exception:  # пошкоджений чи недоступний файл сцени: відкидаємо лише цю дату
+                bad.append(d)
+                for p in (region_dir / "zones").glob(f"*/*/{t}"):
+                    shutil.rmtree(p, ignore_errors=True)
+        dates = read_ok
+        if bad:
+            rec["unreadable_dates"] = len(bad)
+        pre = [d for d, _ in dates if date.fromisoformat(d) < e["date"]]
+        if len(pre) < 2 or not [d for d, _ in dates if date.fromisoformat(d) > e["date"]]:
+            rec["skip"] = "мало дат після відкидання непрочитаних сцен"
+            done_path.open("a").write(json.dumps(rec, ensure_ascii=False) + "\n")
+            shutil.rmtree(region_dir, ignore_errors=True)
+            continue
 
         cld = {}
         for t, (d, _) in enumerate(dates):

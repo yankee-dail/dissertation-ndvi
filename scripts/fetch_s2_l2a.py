@@ -101,7 +101,7 @@ def read_asset(href, boxes, px, resampling, scale_offset, attempts=6):
         except rasterio.errors.RasterioIOError as e:
             if attempt == attempts:
                 raise
-            print(f"  повтор {attempt}/{attempts - 1} для {href.rsplit('/', 1)[-1]}: {e}", flush=True)
+            print(f"  повтор {attempt}/{attempts - 1} для {href}: {e}", flush=True)
             time.sleep(15 * attempt)
     arr = np.stack(out)
     if scale_offset is None:
