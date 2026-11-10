@@ -21,6 +21,7 @@
 """
 import argparse
 import json
+import re
 import shutil
 import sys
 from datetime import date, datetime, timedelta
@@ -40,10 +41,12 @@ from train_step2 import build_dataset
 from eval_protocol import CLEAN_PIXEL_THRESH
 from validation_extras import StreamingQuantile, predict
 from anomaly_detection import scores, nd, VEG_NDVI, B8, B4, B8A, B5, DETECTORS
-from fetch_s2_l2a import BAND_ASSETS, STAC, write_date
+from rasterio.enums import Resampling
+from fetch_s2_l2a import BAND_ASSETS, CLOUDY_SCL, STAC, read_asset, write_date
 
 PATCH_M, RES = 2560, 20
 PX = PATCH_M // RES
+REF_MAX_CLOUD = 0.1  # як ref_max_cloud у SEN12MSCRTSPatchDataset
 
 
 def stac_items(lon, lat, start, end, collection):
@@ -111,6 +114,9 @@ def main():
     ap.add_argument("--post-days", type=int, default=30)
     ap.add_argument("--max-cloud", type=float, default=60)
     ap.add_argument("--target-max-cloud", type=float, default=0.3)
+    ap.add_argument("--shard", type=int, default=0, help="паралельні процеси: цей бере події shard::n_shards")
+    ap.add_argument("--n-shards", type=int, default=1)
+    ap.add_argument("--max-pre-dates", type=int, default=6, help="скільки дат до граду читати, шукаючи чисту")
     ap.add_argument("--ctrl-km", type=float, default=18)
     ap.add_argument("--collection", default="sentinel-2-l2a")
     ap.add_argument("--work", default="data/l2a_hail")
@@ -143,6 +149,7 @@ def main():
     events.sort(key=lambda e: e["date"])
     if args.max_events:
         events = events[:args.max_events]
+    events = events[args.shard::args.n_shards]
     print(f"{len(events)} подій у вегетаційні місяці", flush=True)
 
     for e in events:
@@ -178,33 +185,66 @@ def main():
             done_path.open("a").write(json.dumps(rec, ensure_ascii=False) + "\n")
             continue
 
-        region_dir = Path(args.work) / f"ev_{e['id'].replace(':', '_').replace('/', '_')[:60]}"
-        read_ok, bad = [], []
-        for d, it in dates:
-            t = len(read_ok)
+        # Моделі потрібні лише ціль (перший чистий знімок після граду), найпізніший чистий знімок до неї
+        # (опорне значення) і найближча дата перед ціллю, тож дати читаються ліниво: вперед від граду до
+        # першої чистої, назад від граду до першої чистої. Повне завантаження 90 діб - ~30 хв на подію.
+        region_dir = Path(args.work) / ("ev_" + re.sub(r"[^0-9A-Za-z_-]+", "_", e["id"])[:60])
+        got, cld, bad = [], {}, 0
+
+        def fetch(d, it):
+            nonlocal bad
+            t = len(got)
             try:
                 write_date(t, d, it, boxes, region_dir, epsg, PX, RES)
-                read_ok.append((d, it))
             except Exception:  # пошкоджений чи недоступний файл сцени: відкидаємо лише цю дату
-                bad.append(d)
+                bad += 1
                 for p in (region_dir / "zones").glob(f"*/*/{t}"):
                     shutil.rmtree(p, ignore_errors=True)
-        dates = read_ok
+                return None
+            got.append((d, it))
+            cld[t] = float(np.mean([np.mean(rasterio.open(p).read(1) / 100.0)
+                                    for p in (region_dir / "zones").glob(f"*/CLD/{t}/*.tif")]))
+            return cld[t]
+
+        def scl_cloud(it):
+            """Хмарність зон лише за маскою SCL (один файл замість 14) - для відбору дат."""
+            try:
+                scl = read_asset(it["assets"]["scl"]["href"], [b for _, _, b in boxes], PX, Resampling.nearest, None, attempts=2)
+            except Exception:
+                return None
+            return float(np.isin(scl, CLOUDY_SCL).mean())
+
+        post = [(d, it) for d, it in dates if date.fromisoformat(d) > e["date"]]
+        pre = [(d, it) for d, it in dates if date.fromisoformat(d) < e["date"]]
+        tgt, prev = None, None  # prev - найближча дата перед ціллю (x_near моделі)
+        for j, (d, it) in enumerate(post):
+            c = scl_cloud(it)
+            if c is not None and c <= args.target_max_cloud:
+                c = fetch(d, it)
+                if c is not None and c <= args.target_max_cloud:
+                    tgt = len(got) - 1
+                    prev = post[j - 1] if j > 0 else None
+                    break
+        n_pre = 0
+        if tgt is not None:
+            ref = None
+            for d, it in list(reversed(pre))[:args.max_pre_dates]:
+                c = scl_cloud(it)
+                if c is not None and c <= REF_MAX_CLOUD:
+                    ref = (d, it)
+                    break
+            for d, it in {x[0]: x for x in (prev, ref, pre[-1] if pre else None) if x}.values():
+                c = fetch(d, it)
+                n_pre += c is not None and date.fromisoformat(d) < e["date"]
+        dates = got
         if bad:
-            rec["unreadable_dates"] = len(bad)
-        pre = [d for d, _ in dates if date.fromisoformat(d) < e["date"]]
-        if len(pre) < 2 or not [d for d, _ in dates if date.fromisoformat(d) > e["date"]]:
-            rec["skip"] = "мало дат після відкидання непрочитаних сцен"
+            rec["unreadable_dates"] = bad
+        if tgt is not None and n_pre == 0:
+            rec["skip"] = "немає прочитаних знімків до граду"
             done_path.open("a").write(json.dumps(rec, ensure_ascii=False) + "\n")
             shutil.rmtree(region_dir, ignore_errors=True)
             continue
-
-        cld = {}
-        for t, (d, _) in enumerate(dates):
-            vals = [np.mean(rasterio.open(p).read(1) / 100.0)
-                    for p in (region_dir / "zones").glob(f"*/CLD/{t}/*.tif")]
-            cld[t] = float(np.mean(vals))
-        post_t = [t for t, (d, _) in enumerate(dates) if date.fromisoformat(d) > e["date"] and cld[t] <= args.target_max_cloud]
+        post_t = [] if tgt is None else [tgt]
         if not post_t:
             rec["skip"] = "немає чистого знімка після граду"
         else:
