@@ -36,6 +36,22 @@ STAC = "https://earth-search.aws.element84.com/v1/search"
 BAND_ASSETS = ["coastal", "blue", "green", "red", "rededge1", "rededge2", "rededge3", "nir", "nir08",
                "nir09", None, "swir16", "swir22"]  # None = B10 (немає в L2A)
 CLOUDY_SCL = (0, 1, 3, 8, 9, 10)
+
+
+def scale_offset(item, asset):
+    """Масштаб і зсув відбиття. Earth Search для переоброблених сцен (базовий рівень >= 04.00) вже прибирає
+    зсув BOA_ADD_OFFSET у самих пікселях (earthsearch:boa_offset_applied), але в raster:bands лишає offset -0.1;
+    віднімати його вдруге - отримати відбиття, занижене на 0,1 (видимі канали обрізаються до нуля)."""
+    rb = (item["assets"][asset].get("raster:bands") or [{}])[0]
+    offset = 0.0 if item["properties"].get("earthsearch:boa_offset_applied") else rb.get("offset", 0.0)
+    return rb.get("scale", 1e-4), offset
+
+
+def baseline(item):
+    try:
+        return float(item["properties"].get("s2:processing_baseline") or 0)
+    except ValueError:
+        return 0.0
 GDAL_ENV = dict(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif",
                 GDAL_HTTP_MAX_RETRY="6", GDAL_HTTP_RETRY_DELAY="3", GDAL_HTTP_MULTIPLEX="NO", GDAL_HTTP_TIMEOUT="60",
                 VSI_CACHE="TRUE", GDAL_CACHEMAX=512)
@@ -59,7 +75,9 @@ def pick_per_date(items, zones_union, max_cloud):
     for it in items:
         d = it["properties"]["datetime"][:10]
         cover = shape(it["geometry"]).intersection(zones_union).area / zones_union.area
-        key = (cover, -it["properties"].get("eo:cloud_cover", 100))
+        # для однієї дати каталог часто має дві версії сцени (первинну й переоброблену); беремо новішу обробку,
+        # щоб вибір був детермінованим
+        key = (cover, -it["properties"].get("eo:cloud_cover", 100), baseline(it))
         if d not in best or key > best[d][0]:
             best[d] = (key, it)
     out = [(d, v[1]) for d, v in sorted(best.items())
@@ -129,7 +147,7 @@ def write_date(t, d, it, all_boxes, region_dir, epsg, px, res):
         rs = Resampling.average if rb.get("spatial_resolution", 20) < res else Resampling.nearest
         if asset == "scl":
             return read_asset(a["href"], boxes, px, Resampling.nearest, None)
-        return read_asset(a["href"], boxes, px, rs, (rb.get("scale", 1e-4), rb.get("offset", 0.0)))
+        return read_asset(a["href"], boxes, px, rs, scale_offset(it, asset))
 
     with ThreadPoolExecutor(max_workers=6) as ex:
         out = list(ex.map(job, BAND_ASSETS + ["scl"]))

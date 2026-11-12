@@ -42,7 +42,7 @@ from eval_protocol import CLEAN_PIXEL_THRESH
 from validation_extras import StreamingQuantile, predict
 from anomaly_detection import scores, nd, VEG_NDVI, B8, B4, B8A, B5, DETECTORS
 from rasterio.enums import Resampling
-from fetch_s2_l2a import BAND_ASSETS, CLOUDY_SCL, STAC, read_asset, write_date
+from fetch_s2_l2a import BAND_ASSETS, CLOUDY_SCL, STAC, baseline, read_asset, write_date
 
 PATCH_M, RES = 2560, 20
 PX = PATCH_M // RES
@@ -196,7 +196,7 @@ def main():
             if not all(cov[j] for j in sel):
                 continue
             d = it["properties"]["datetime"][:10]
-            key = -it["properties"].get("eo:cloud_cover", 100)
+            key = (-it["properties"].get("eo:cloud_cover", 100), baseline(it))
             if d not in best or key > best[d][0]:
                 best[d] = (key, it)
         dates = [(d, v[1]) for d, v in sorted(best.items())]
