@@ -34,8 +34,14 @@ API = "https://phenocam.nau.edu/api"
 ARCHIVE = "https://phenocam.nau.edu/data/archive"
 CLEAR_SCL = (4, 5)  # рослинність, ґрунт
 # польові культури, близькі до українських сівозмін; сади, пасовища, ліс і рис не беруться
-CROPS = ("zea", "maize", "corn", "glycine", "soy", "triticum", "wheat", "hordeum", "barley", "brassica",
+# (Hordeum murinum - дикий ячмінь пасовищ, тому лише Hordeum vulgare)
+CROPS = ("zea", "maize", "corn", "glycine", "soy", "triticum", "wheat", "hordeum vulgare", "barley", "brassica",
          "rapeseed", "helianthus", "sunflower", "sorghum", "gossypium", "cotton", "vicia")
+
+
+def is_crop(species):
+    sp = (species or "").lower()
+    return any(k in sp for k in CROPS) and "oryza" not in sp
 
 
 def api_all(path):
@@ -55,8 +61,7 @@ def select_sites(years, months, max_missing, max_sites):
     by_site = {}
     for r in sorted(rois, key=lambda r: r["sequence_number"]):
         c = cams.get(r["site"])
-        sp = (c or {}).get("sitemetadata", {}).get("dominant_species") or ""
-        if not any(k in sp.lower() for k in CROPS) or "oryza" in sp.lower():
+        if not is_crop((c or {}).get("sitemetadata", {}).get("dominant_species")):
             continue
         if c and c["Lat"] > 0 and r["site"] not in by_site:  # північна півкуля: сезон квітень-жовтень
             by_site[r["site"]] = {"site": r["site"], "roi": r["roi_name"], "lat": c["Lat"], "lon": c["Lon"],

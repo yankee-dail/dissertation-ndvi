@@ -27,6 +27,8 @@ from pathlib import Path
 
 import numpy as np
 
+from phenocam_s2 import is_crop
+
 METHODS = ("persist", "interp", "cam_map", "cam_delta")
 GAP_BINS = ((1, 10), (11, 20), (21, 40), (41, 400))
 
@@ -41,6 +43,8 @@ def load(data, min_clear):
         if f.name == "sites.json":
             continue
         d = json.loads(f.read_text())
+        if not is_crop(d.get("species")):
+            continue
         cam = {d2i(k): v["ndvi"] for k, v in d["camera"].items()}
         s2, n_anom = {}, 0
         for r in d["s2"]:
