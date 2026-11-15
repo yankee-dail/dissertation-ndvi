@@ -1,5 +1,3 @@
-/Users/sbaluk/dissertation-ndvi/.venv312/lib/python3.12/site-packages/skimage/metrics/_structural_similarity.py:4: UserWarning: A NumPy version >=2.0.0 and <2.8.0 is required for this version of SciPy (detected version 1.26.4)
-  from scipy.ndimage import uniform_filter
 Пристрій: cpu
 Train ROI:
   poltava2021/zones/train: 70 патчів x 8 дат (+causal_near)
@@ -8,18 +6,18 @@ Val ROI (лише для вибору епохи, інша локація):
 Test ROI (лише для фінального звіту, ще інша локація):
   poltava2021/zones/test: 30 патчів x 8 дат (+causal_near)
 Разом: train=560, val=160, test=240
-epoch 1/10  train_L1=0.0857  val_L1=0.0671  baseline_yref_L1=0.0671  (найкращий дотепер)
-epoch 2/10  train_L1=0.0652  val_L1=0.0637  baseline_yref_L1=0.0671  (найкращий дотепер)
-epoch 3/10  train_L1=0.0641  val_L1=0.0723  baseline_yref_L1=0.0671
-epoch 4/10  train_L1=0.0630  val_L1=0.0623  baseline_yref_L1=0.0671  (найкращий дотепер)
-epoch 5/10  train_L1=0.0610  val_L1=0.0603  baseline_yref_L1=0.0671  (найкращий дотепер)
-epoch 6/10  train_L1=0.0603  val_L1=0.0622  baseline_yref_L1=0.0671
-epoch 7/10  train_L1=0.0593  val_L1=0.0591  baseline_yref_L1=0.0671  (найкращий дотепер)
-epoch 8/10  train_L1=0.0593  val_L1=0.0589  baseline_yref_L1=0.0671  (найкращий дотепер)
-epoch 9/10  train_L1=0.0573  val_L1=0.0598  baseline_yref_L1=0.0671
-epoch 10/10  train_L1=0.0584  val_L1=0.0595  baseline_yref_L1=0.0671
+epoch 1/10  train_L1=0.0697  val_L1=0.0493  baseline_yref_L1=0.0435  (найкращий дотепер)
+epoch 2/10  train_L1=0.0499  val_L1=0.0539  baseline_yref_L1=0.0435
+epoch 3/10  train_L1=0.0472  val_L1=0.0563  baseline_yref_L1=0.0435
+epoch 4/10  train_L1=0.0449  val_L1=0.0470  baseline_yref_L1=0.0435  (найкращий дотепер)
+epoch 5/10  train_L1=0.0443  val_L1=0.0426  baseline_yref_L1=0.0435  (найкращий дотепер)
+epoch 6/10  train_L1=0.0430  val_L1=0.0463  baseline_yref_L1=0.0435
+epoch 7/10  train_L1=0.0423  val_L1=0.0433  baseline_yref_L1=0.0435
+epoch 8/10  train_L1=0.0414  val_L1=0.0433  baseline_yref_L1=0.0435
+epoch 9/10  train_L1=0.0417  val_L1=0.0427  baseline_yref_L1=0.0435
+epoch 10/10  train_L1=0.0412  val_L1=0.0512  baseline_yref_L1=0.0435
 
-Найкраща епоха за val_L1: 8 (val_L1=0.0589) - саме цей чекпоінт оцінюється й зберігається.
+Найкраща епоха за val_L1: 5 (val_L1=0.0426) - саме цей чекпоінт оцінюється й зберігається.
 
 # Крок 2 (прототип): залишкова U-Net проти копіювання y_ref
 
@@ -31,14 +29,14 @@ x_near: лише кадри до цілі (причинний режим).
 Train ROI: poltava2021/zones/train (560 патчів).
 Val ROI (вибір епохи): poltava2021/zones/val (160 патчів).
 Test ROI (фінальний звіт, НЕ бачений при виборі епохи): poltava2021/zones/test (240 патчів).
-Епох: 10, розмір зображення (даунсемпл): 128x128. Найкраща епоха за val_L1: 8.
+Епох: 10, розмір зображення (даунсемпл): 128x128. Найкраща епоха за val_L1: 5.
 RMSE/MAE/SAM рахувались лише по пікселях цілі з хмарністю < 0.2 (3779925/3932160 = 96.1% пікселів test-набору; SSIM - без маски). Лосс тренування й вибору епохи - НЕ маскований (повний target).
 
-- Модель (y_ref + Δθ):  RMSE 0.0587±0.0288  MAE 0.0426±0.0227  SSIM 0.5649±0.1668  SAM 12.41±9.02°
-- Базовий рівень (y_ref): RMSE 0.0735±0.0405  MAE 0.0537±0.0329  SSIM 0.5758±0.2171  SAM 13.05±9.83°
+- Модель (y_ref + Δθ):  RMSE 0.0455±0.0270  MAE 0.0301±0.0188  SSIM 0.6984±0.1687  SAM 7.15±5.12°
+- Базовий рівень (y_ref): RMSE 0.0518±0.0380  MAE 0.0317±0.0241  SSIM 0.7343±0.1650  SAM 6.28±4.95°
 
-Δ RMSE (модель - базовий) = -0.0148 [-0.0180, -0.0115] - значуще краще
-Δ SAM  (модель - базовий) = -0.64° [-1.33, +0.05] - не значуще (CI перетинає 0)
+Δ RMSE (модель - базовий) = -0.0062 [-0.0090, -0.0039] - значуще краще
+Δ SAM  (модель - базовий) = +0.86° [+0.58, +1.17] - значуще гірше
 
 Критерій кроку 2 (статистично значуще не гірше за базовий метод за RMSE І SAM) НЕ виконано на цьому прототипі.
 
