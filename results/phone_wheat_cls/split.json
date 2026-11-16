@@ -1,0 +1,56 @@
+{
+ "n": 999,
+ "counts": {
+  "train": {
+   "BrownRust": 79,
+   "Healthy": 69,
+   "Mildew": 96,
+   "Septoria": 202,
+   "YellowRust": 135
+  },
+  "calib": {
+   "BrownRust": 21,
+   "Healthy": 27,
+   "Mildew": 36,
+   "Septoria": 83,
+   "YellowRust": 54
+  },
+  "test": {
+   "BrownRust": 28,
+   "Healthy": 26,
+   "Mildew": 29,
+   "Septoria": 64,
+   "YellowRust": 50
+  }
+ },
+ "group": 25,
+ "split_seed": 0,
+ "near_dup_test_vs_train": 2,
+ "formats": {
+  "BrownRust": {
+   "png": 128,
+   "jpeg": 0,
+   "jpg": 0
+  },
+  "Healthy": {
+   "png": 122,
+   "jpeg": 0,
+   "jpg": 0
+  },
+  "Mildew": {
+   "png": 136,
+   "jpeg": 25,
+   "jpg": 0
+  },
+  "Septoria": {
+   "png": 349,
+   "jpeg": 0,
+   "jpg": 0
+  },
+  "YellowRust": {
+   "png": 239,
+   "jpeg": 0,
+   "jpg": 0
+  }
+ }
+}
