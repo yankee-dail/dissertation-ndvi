@@ -1,0 +1,32 @@
+{
+ "gcc": {
+  "events": 267,
+  "sites": 36,
+  "detected": 0.6179775280898876,
+  "lead_median": 4.0,
+  "lead_ge1_share_of_events": 0.5842696629213483,
+  "gap_median": 10.0,
+  "quiet_intervals": 2602,
+  "quiet_alarm_share": 0.06379707916986933,
+  "detected_by_drop": {
+   "0.15-0.25": 0.5808383233532934,
+   "0.25-0.4": 0.7105263157894737,
+   "0.4-2": 0.5833333333333334
+  }
+ },
+ "ndvi": {
+  "events": 267,
+  "sites": 36,
+  "detected": 0.6142322097378277,
+  "lead_median": 5.0,
+  "lead_ge1_share_of_events": 0.5955056179775281,
+  "gap_median": 10.0,
+  "quiet_intervals": 2602,
+  "quiet_alarm_share": 0.06264411990776327,
+  "detected_by_drop": {
+   "0.15-0.25": 0.5808383233532934,
+   "0.25-0.4": 0.6710526315789473,
+   "0.4-2": 0.6666666666666666
+  }
+ }
+}

@@ -60,8 +60,10 @@ def load(data, min_clear, index="ndvi"):
     return sites
 
 
-def cam_at(cam, t):
-    v = [cam[t + k] for k in (-1, 0, 1) if t + k in cam]
+def cam_at(cam, t, causal=False):
+    """Значення камери на день t: медіана за 3 доби. causal=True - лише t−2..t (для прогнозу в реальному часі,
+    без зазирання в наступний день); causal=False - t−1..t+1 (для узгодженості рядів, розділ 9.3)."""
+    v = [cam[t + k] for k in ((-2, -1, 0) if causal else (-1, 0, 1)) if t + k in cam]
     return float(np.median(v)) if v else None
 
 
@@ -82,8 +84,8 @@ def predictions(site, min_fit, g=1):
             if nxt is not None:
                 w = (t - prev) / (nxt - prev)
                 p["interp"] = (1 - w) * site["s2"][prev] + w * site["s2"][nxt]
-            fit = [(c, site["s2"][u]) for u in before if (c := cam_at(site["cam"], u)) is not None]
-            ct, cp = cam_at(site["cam"], t), cam_at(site["cam"], prev)
+            fit = [(c, site["s2"][u]) for u in before if (c := cam_at(site["cam"], u, True)) is not None]
+            ct, cp = cam_at(site["cam"], t, True), cam_at(site["cam"], prev, True)
             if len(fit) >= min_fit and ct is not None:
                 x, yv = np.array(fit).T
                 if np.ptp(x) > 0.02:
