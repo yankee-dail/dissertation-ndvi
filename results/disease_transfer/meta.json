@@ -1,0 +1,14 @@
+{
+ "arch": "convnext_tiny.fb_in22k_ft_in1k",
+ "epochs": 3,
+ "ft_epochs": 10,
+ "plantdoc": {
+  "n": 2534,
+  "duplicates": 44,
+  "unreadable": 0
+ },
+ "pv_images": 38542,
+ "pv_source": "github spMohanty/PlantVillage-Dataset raw/color (tfds fallback)",
+ "device": "Tesla T4 (Colab)",
+ "date": "2026-11-16"
+}
