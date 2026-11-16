@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Розділ 9: узгодженість NDVI наземних камер PhenoCam і Sentinel-2 та відновлення пропущених супутникових дат.
+Розділ 9 (і 10.1 з --cam-index gcc): узгодженість NDVI наземних камер PhenoCam і Sentinel-2 та відновлення пропущених супутникових дат.
 
 Вхід - data/phenocam/<site>.json (scripts/phenocam_s2.py). Для кожної ділянки-року:
   - ряд S2: сцени з часткою чистих пікселів (SCL 4, 5) ≥ --min-clear; сцени з NDVI поза (-0,2; 1] відкидаються
@@ -37,7 +37,7 @@ def d2i(s):
     return date.fromisoformat(s).toordinal()
 
 
-def load(data, min_clear):
+def load(data, min_clear, index="ndvi"):
     sites = []
     for f in sorted(Path(data).glob("*.json")):
         if f.name == "sites.json":
@@ -45,7 +45,7 @@ def load(data, min_clear):
         d = json.loads(f.read_text())
         if not is_crop(d.get("species")):
             continue
-        cam = {d2i(k): v["ndvi"] for k, v in d["camera"].items()}
+        cam = {d2i(k): v[index] for k, v in d["camera"].items() if v.get(index) is not None}
         s2, n_anom = {}, 0
         for r in d["s2"]:
             if r["clear_frac"] < min_clear or "ndvi_clear" not in r:
@@ -130,13 +130,15 @@ def main():
     ap.add_argument("--alpha", type=float, default=0.1)
     ap.add_argument("--sim-gaps", type=int, nargs="*", default=[10, 20, 30],
                     help="імітовані хмарні пропуски, діб у кожен бік від цілі")
+    ap.add_argument("--cam-index", choices=["ndvi", "gcc"], default="ndvi",
+                    help="ряд камери: NDVI (RGB + ближній ІЧ) або GCC (лише RGB, розділ 10.1)")
     ap.add_argument("--min-r", type=float, default=0.5,
                     help="ділянки з r камера-S2 нижче порогу (камера не бачить того ж поля) - окремо")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    sites = load(args.data, args.min_clear)
+    sites = load(args.data, args.min_clear, args.cam_index)
     agr = {s["site"]: agreement(s) for s in sites}
     good = [s for s in sites if agr[s["site"]] and agr[s["site"]]["r"] >= args.min_r]
     mism = [s["site"] for s in sites if agr[s["site"]] and agr[s["site"]]["r"] < args.min_r]
@@ -147,7 +149,7 @@ def main():
     common = [r for r in recs if all(r["pred"][m] is not None for m in METHODS)]
     err = {m: np.array([abs(r["pred"][m] - r["truth"]) for r in common]) for m in METHODS}
 
-    L = ["# Розділ 9: NDVI наземних камер PhenoCam і Sentinel-2", ""]
+    L = [f"# Розділ 9: {args.cam_index.upper()} наземних камер PhenoCam і NDVI Sentinel-2", ""]
     L += [f"Ділянок із даними: {len(sites)}; з ≥ 10 спільними датами: {sum(v is not None for v in agr.values())}; "
           f"узгоджених (r ≥ {args.min_r}): {len(good)}. Ділянки з r < {args.min_r} (камера бачить інше поле, ніж "
           f"квадрат S2): {', '.join(mism) or 'немає'}. Відкинуто сцен-аномалій (NDVI поза (−0,2; 1]): "
