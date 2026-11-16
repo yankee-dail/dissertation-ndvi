@@ -48,11 +48,13 @@ def gap_bin(g):
     return next((lo for lo, hi in GAP_BINS if lo <= g <= hi), None)
 
 
-def load_zone(zone_dir, block, min_clear):
-    """-> {(patch, br, bc): {ordinal: ndvi}}, {ordinal: scene}, кількість ділянок."""
+def load_zone(zone_dir, block, min_clear, skip=frozenset()):
+    """-> {(patch, br, bc): {ordinal: ndvi}}, {ordinal: scene}. skip - дати сцен, відкинутих контролем якості."""
     series, scenes = defaultdict(dict), {}
     for f in sorted((zone_dir / "S2").glob("*/*.tif")):
         m = DATE_RE.search(f.name)
+        if m.group(1) in skip:
+            continue
         t, patch = date.fromisoformat(m.group(1)).toordinal(), int(m.group(2))
         scenes[t] = f.parent.name
         with rasterio.open(f) as r:
@@ -96,14 +98,21 @@ def main():
     ap.add_argument("--alpha", type=float, default=0.1)
     ap.add_argument("--alpha-event", type=float, default=0.05)
     ap.add_argument("--season", nargs=2, default=["2021-04-01", "2021-10-15"])
+    ap.add_argument("--qc", default=None, help="results/data_audit/summary.json: відкинути позначені сцени")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     root = Path(args.root)
+    skip = {"calib": set(), "test": set()}
+    if args.qc:
+        region = root.parent.name
+        for fl in json.loads(Path(args.qc).read_text())["flags"]:
+            if fl["region"] == region and fl["zone"] in skip:
+                skip[fl["zone"]].add(fl["date"])
 
-    cal_s, _ = load_zone(root / "calib", args.block, args.min_clear)
-    tst_s, scenes = load_zone(root / "test", args.block, args.min_clear)
+    cal_s, _ = load_zone(root / "calib", args.block, args.min_clear, frozenset(skip["calib"]))
+    tst_s, scenes = load_zone(root / "test", args.block, args.min_clear, frozenset(skip["test"]))
     P_cal, P_tst = pairs(cal_s, args.max_gap), pairs(tst_s, args.max_gap)
     res_cal, res_tst = np.abs(P_cal[:, 2]), np.abs(P_tst[:, 2])
     gb_cal = np.array([gap_bin(int(g)) for g in P_cal[:, 0]])
@@ -212,6 +221,7 @@ def main():
                   "alarms_by_month": dict(sorted(by_grp[g].items()))} for g in ("озимі", "ярі", "інше")}
 
     summary = {
+        "qc_skipped": {k: sorted(v) for k, v in skip.items()},
         "groups": groups,
         "blocks": {"calib": len(cal_s), "test": len(tst_s)}, "block_m": args.block * 20,
         "scenes": len(scenes), "scene_dates": [date.fromordinal(t).isoformat() for t in clear_dates],
