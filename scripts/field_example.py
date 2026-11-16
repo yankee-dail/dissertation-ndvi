@@ -71,8 +71,8 @@ def main():
             t0 = before[-1]
             gap = t - t0
             b = next((lo for lo, hi in BINS if lo <= gap <= hi), None)
-            fit = [(c, site["s2"][u]) for u in before if (c := cam_at(site["cam"], u, True)) is not None]
-            ct, c0 = cam_at(site["cam"], t, True), cam_at(site["cam"], t0, True)
+            fit = [(c, site["s2"][u]) for u in before if (c := cam_at(site["cam"], u, t)) is not None]
+            ct, c0 = cam_at(site["cam"], t, t), cam_at(site["cam"], t0, t)
             row.update({"gap": gap, "persist": site["s2"][t0]})
             if b is not None:
                 row["q_persist"] = q[("persist", b)]
